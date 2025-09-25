@@ -12,22 +12,12 @@ let pauseMargin = 0.5;
 let checkIntervalMs = 100;
 let pollIntervalMs = 200;
 
-// Cargar settings asíncronamente
-function loadSettings(callback) {
-  preferences.get("pauseMargin", (value) => {
-    pauseMargin = parseFloat(value) || 0.5;
-  });
-  preferences.get("checkIntervalMs", (value) => {
-    checkIntervalMs = parseInt(value) || 100;
-  });
-  preferences.get("pollIntervalMs", (value) => {
-    pollIntervalMs = parseInt(value) || 200;
-  });
-  // Callback para continuar después de cargar
-  setTimeout(() => {
-    console.log(`Settings cargados: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms`);
-    if (callback) callback();
-  }, 100); // Pequeño delay para asegurar carga
+// Cargar settings síncronamente
+function loadSettings() {
+  pauseMargin = preferences.get("pauseMargin") || 0.5;
+  checkIntervalMs = parseInt(preferences.get("checkIntervalMs")) || 100;
+  pollIntervalMs = parseInt(preferences.get("pollIntervalMs")) || 200;
+  console.log(`Settings cargados: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms`);
 }
 
 // Función para pausar antes del siguiente subtítulo (usa settings)
@@ -115,10 +105,9 @@ event.on("mpv.file-loaded", () => {
   const subVis = mpv.getFlag("sub-visibility");
   console.log(`Archivo cargado. SID: ${sid}, Vis: ${subVis ? 'yes' : 'no'}`);
   
-  loadSettings(() => {
-    core.osd("Plugin pausa-subs: Activo con settings. Reinicia video para cambios.");
-    if (sid > 0) startPolling();
-  });
+  loadSettings();
+  core.osd("Plugin pausa-subs: Activo con settings. Reinicia video para cambios.");
+  if (sid > 0) startPolling();
 });
 
 // Toggle con 'P'
@@ -135,9 +124,8 @@ event.on("mpv.key-press", (event) => {
 });
 
 // Inicializar al cargar plugin
-loadSettings(() => {
-  console.log("Plugin iniciado con settings.");
-});
+loadSettings();
+console.log("Plugin iniciado con settings.");
 
 // Limpieza
 event.on("iina.will-unload", () => {

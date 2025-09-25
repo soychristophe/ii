@@ -27,13 +27,7 @@
   <div class="pref-section">
     <label>Intervalo de polling (ms):</label>
     <input type="number" data-pref-key="pollIntervalMs" data-type="int" min="100" max="1000" step="50" value="200" />
-    <p class="help">Frecuencia para detectar subtítulos nuevos.</p>
+    <p class="help">Frecuencia para detectar nuevos subtítulos.</p>
   </div>
-
-  <script>
-    // Binding automático de IINA maneja los cambios (no necesita JS extra)
-    const { preferences } = window.iina;
-    console.log("Página de prefs cargada.");
-  </script>
 </body>
 </html>

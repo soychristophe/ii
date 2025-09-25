@@ -1,7 +1,7 @@
 {
   "name": "Pausa-Subtítulos",
   "identifier": "com.soychristophe.pausabeforesub",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "author": {
     "name": "Christophe Gomez de la Red"
   },
@@ -11,7 +11,8 @@
   "hasSettings": true,
   "preferencesPage": "preferences.html",
   "preferenceDefaults": {
-    "pauseMargin": 0.5,
+    "pauseMargin": 1.5,
     "checkIntervalMs": 100,
     "pollIntervalMs": 200
 }
+
