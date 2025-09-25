@@ -1,4 +1,4 @@
-const { console, core, event, mpv, settings } = iina;
+const { console, core, event, mpv, preferences } = iina;
 
 // Variables
 let checkInterval = null;
@@ -7,74 +7,28 @@ let currentSubEnd = 0;
 let lastSubText = "";
 let pluginEnabled = true;
 
-// Defaults (se sobrescriben con settings)
-let pauseMargin = 0.5; // Segundos
-let checkIntervalMs = 100; // ms
-let pollIntervalMs = 200; // ms
+// Defaults (fallback si no hay prefs)
+let pauseMargin = 0.5;
+let checkIntervalMs = 100;
+let pollIntervalMs = 200;
 
-// Registrar settings al cargar
-function registerSettings() {
-  settings.register({
-    id: "pauseMargin",
-    title: "Margen de pausa (segundos)",
-    type: "number",
-    default: 0.5,
-    min: 0.1,
-    max: 5.0,
-    step: 0.1,
-    description: "Cuántos segundos antes del fin del subtítulo pausar."
+// Cargar settings asíncronamente
+function loadSettings(callback) {
+  preferences.get("pauseMargin", (value) => {
+    pauseMargin = parseFloat(value) || 0.5;
   });
-
-  settings.register({
-    id: "checkIntervalMs",
-    title: "Intervalo de chequeo (ms)",
-    type: "number",
-    default: 100,
-    min: 50,
-    max: 500,
-    step: 50,
-    description: "Frecuencia de chequeo durante el subtítulo (menor = más preciso)."
+  preferences.get("checkIntervalMs", (value) => {
+    checkIntervalMs = parseInt(value) || 100;
   });
-
-  settings.register({
-    id: "pollIntervalMs",
-    title: "Intervalo de polling (ms)",
-    type: "number",
-    default: 200,
-    min: 100,
-    max: 1000,
-    step: 50,
-    description: "Frecuencia para detectar nuevos subtítulos."
+  preferences.get("pollIntervalMs", (value) => {
+    pollIntervalMs = parseInt(value) || 200;
   });
-
-  // Cargar valores iniciales
-  loadSettings();
+  // Callback para continuar después de cargar
+  setTimeout(() => {
+    console.log(`Settings cargados: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms`);
+    if (callback) callback();
+  }, 100); // Pequeño delay para asegurar carga
 }
-
-// Cargar y aplicar settings
-function loadSettings() {
-  pauseMargin = settings.get("pauseMargin") || 0.5;
-  checkIntervalMs = settings.get("checkIntervalMs") || 100;
-  pollIntervalMs = settings.get("pollIntervalMs") || 200;
-  console.log(`Settings cargados: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms`);
-}
-
-// Escucha cambios en settings y aplica
-event.on("settings.changed", (event) => {
-  if (event.id === "pauseMargin" || event.id === "checkIntervalMs" || event.id === "pollIntervalMs") {
-    loadSettings();
-    console.log(`Settings actualizados: ${event.id} cambiado a ${event.value}`);
-    // Reinicia intervalos si activos
-    if (checkInterval) {
-      clearInterval(checkInterval);
-      setupPauseBeforeNextSub(); // Reconfigura con nuevos valores
-    }
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      startPolling();
-    }
-  }
-});
 
 // Función para pausar antes del siguiente subtítulo (usa settings)
 function setupPauseBeforeNextSub() {
@@ -151,7 +105,7 @@ event.on("mpv.pause.changed", () => {
   }
 });
 
-// Al cargar archivo
+// Al cargar archivo (carga settings y reinicia)
 event.on("mpv.file-loaded", () => {
   currentSubEnd = 0;
   lastSubText = "";
@@ -160,8 +114,11 @@ event.on("mpv.file-loaded", () => {
   const sid = mpv.getNumber("sid");
   const subVis = mpv.getFlag("sub-visibility");
   console.log(`Archivo cargado. SID: ${sid}, Vis: ${subVis ? 'yes' : 'no'}`);
-  core.osd("Plugin pausa-subs: Activo con settings configurables.");
-  if (sid > 0) startPolling();
+  
+  loadSettings(() => {
+    core.osd("Plugin pausa-subs: Activo con settings. Reinicia video para cambios.");
+    if (sid > 0) startPolling();
+  });
 });
 
 // Toggle con 'P'
@@ -177,8 +134,10 @@ event.on("mpv.key-press", (event) => {
   }
 });
 
-// Inicializar settings al cargar el plugin
-registerSettings();
+// Inicializar al cargar plugin
+loadSettings(() => {
+  console.log("Plugin iniciado con settings.");
+});
 
 // Limpieza
 event.on("iina.will-unload", () => {

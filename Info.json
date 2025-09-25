@@ -1,12 +1,17 @@
 {
   "name": "Pausa-Subtítulos",
   "identifier": "com.soychristophe.pausabeforesub",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "author": {
     "name": "Christophe Gomez de la Red"
   },
   "entry": "main.js",
   "description": "An IINA plugin to manage Online and Local playlists, including automatic discovery of all media files in nested folders for Local playlists, clipboard URL playlists, and playlist management (play, rename, delete).",
   "permissions": ["show-osd", "show-alert", "file-system"],
-  "hasSettings": true
+  "hasSettings": true,
+  "preferencesPage": "preferences.html",
+  "preferenceDefaults": {
+    "pauseMargin": 0.5,
+    "checkIntervalMs": 100,
+    "pollIntervalMs": 200
 }
