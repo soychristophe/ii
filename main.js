@@ -11,9 +11,16 @@ let pluginEnabled = true;
 function setupPauseBeforeNextSub() {
   if (checkInterval) clearInterval(checkInterval);
 
-  const pauseMargin = 0.3; // Aumentado a 0.3s para más margen (ajusta si quieres)
-  const currentTime = mpv.getNumber("playback-time"); // Tiempo al inicio del sub
-  console.log(`*** Configurando pausa: Sub termina en ${currentSubEnd.toFixed(2)}s (desde tiempo=${currentTime.toFixed(2)}s, margen=${pauseMargin}s) ***`);
+  const pauseMargin = 0.5; // Margen más amplio para evitar dobles pausas
+  const currentTime = mpv.getNumber("playback-time");
+  
+  // Seguridad: Si ya pasamos el fin, no chequeamos (espera nuevo sub via polling/evento)
+  if (currentTime > currentSubEnd) {
+    console.log(`Sub ya terminó (tiempo=${currentTime.toFixed(2)}s > fin=${currentSubEnd.toFixed(2)}s). Esperando nuevo subtítulo.`);
+    return;
+  }
+
+  console.log(`Configurando pausa: Sub termina en ${currentSubEnd.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s)`);
 
   checkInterval = setInterval(() => {
     const nowTime = mpv.getNumber("playback-time");
@@ -21,65 +28,60 @@ function setupPauseBeforeNextSub() {
     const subVisibility = mpv.getFlag("sub-visibility");
     const sid = mpv.getNumber("sid");
 
-    console.log(`Chequeo: tiempo=${nowTime.toFixed(2)}s, pausa=${isPaused}, vis=${subVisibility}, sid=${sid}, fin_sub=${currentSubEnd.toFixed(2)}s`);
-
-    // Pausa solo si no pausado, subs visibles, y cerca del fin (PERO no después del fin + margen para evitar tardío)
-    if (!isPaused && subVisibility && sid > 0 && nowTime >= (currentSubEnd - pauseMargin) && nowTime < (currentSubEnd + 1)) {
-      core.pause(); // ¡FIX: Usa core.pause() en lugar de command!
-      console.log(`*** PAUSADO AUTOMÁTICO a los ${nowTime.toFixed(2)}s (antes de fin: ${currentSubEnd.toFixed(2)}s) ***`);
-      core.osd("⏸️ Pausa: Presiona play para siguiente subtítulo"); // FIX: Solo mensaje
-      clearInterval(checkInterval); // Detiene inmediatamente
-      return; // Sale del intervalo
+    // Log solo cada 5 chequeos para reducir spam (opcional: comenta para más detalles)
+    if (Math.floor(nowTime * 10) % 5 === 0) {
+      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, v=${subVisibility}, s=${sid}, fin=${currentSubEnd.toFixed(2)}s`);
     }
-  }, 100); // Cada 100ms
+
+    if (!isPaused && subVisibility && sid > 0 && nowTime >= (currentSubEnd - pauseMargin) && nowTime < currentSubEnd + 1) {
+      core.pause();
+      console.log(`*** PAUSADO AUTO a ${nowTime.toFixed(2)}s (fin: ${currentSubEnd.toFixed(2)}s) ***`);
+      core.osd("⏸️ Pausa: Play para siguiente subtítulo");
+      clearInterval(checkInterval);
+    }
+  }, 100);
 }
 
-// Polling de respaldo: Detecta cambios en sub-text cada 200ms (más frecuente para tempranía)
+// Polling: Detecta cambios en sub-text (con pequeño delay para updates de mpv)
 function startPolling() {
   if (pollInterval) clearInterval(pollInterval);
   pollInterval = setInterval(() => {
-    const subText = mpv.getString("sub-text");
-    if (subText && subText.trim() !== "" && subText !== lastSubText) {
-      lastSubText = subText;
-      currentSubEnd = mpv.getNumber("sub-end");
-      console.log(`*** Cambio de subtítulo detectado por POLLING. Texto: "${subText.substring(0, 50)}...", Fin en: ${currentSubEnd.toFixed(2)}s ***`);
-      if (pluginEnabled) {
-        setupPauseBeforeNextSub();
+    setTimeout(() => { // Delay mínimo para sync con mpv
+      const subText = mpv.getString("sub-text");
+      if (subText && subText.trim() !== "" && subText !== lastSubText) {
+        lastSubText = subText;
+        currentSubEnd = mpv.getNumber("sub-end");
+        console.log(`*** Nuevo sub por POLLING: "${subText.substring(0, 50)}...", fin=${currentSubEnd.toFixed(2)}s ***`);
+        if (pluginEnabled) {
+          setupPauseBeforeNextSub();
+        }
       }
-    }
-  }, 200); // Más frecuente para capturar antes
+    }, 50);
+  }, 200);
 }
 
-// Evento: Cambio en sub-start (inicio de nuevo subtítulo)
+// Evento: Inicio de nuevo subtítulo (principal)
 event.on("mpv.sub-start.changed", () => {
   const subStart = mpv.getNumber("sub-start");
   const subText = mpv.getString("sub-text");
   const sid = mpv.getNumber("sid");
-  console.log(`*** EVENTO sub-start.changed! Inicio: ${subStart.toFixed(2)}s, Texto: "${subText.substring(0, 50)}...", SID: ${sid} ***`);
-
+  
   if (sid > 0 && subText && subText.trim() !== "") {
     currentSubEnd = mpv.getNumber("sub-end");
-    console.log(`Nuevo subtítulo via sub-start. Fin en: ${currentSubEnd.toFixed(2)}s`);
+    lastSubText = subText;
+    console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s ***`);
     if (pluginEnabled) {
       setupPauseBeforeNextSub();
     }
   }
 });
 
-// Cuando se presiona play (reinicia)
+// Evento: Play manual (solo reinicia polling, NO setup para evitar doble pausa)
 event.on("mpv.pause.changed", () => {
   const isPaused = mpv.getFlag("pause");
   if (!isPaused) {
-    console.log("*** Play manual: Reiniciando chequeo y polling. ***");
-    core.resume(); // Asegura resume si needed
-    const currentSub = mpv.getString("sub-text");
-    console.log(`Sub-text al play: "${currentSub.substring(0, 50)}..."`);
-    if (currentSub && currentSub.trim() !== "") {
-      currentSubEnd = mpv.getNumber("sub-end");
-      lastSubText = currentSub;
-      if (pluginEnabled) setupPauseBeforeNextSub();
-    }
-    startPolling();
+    console.log("*** Play manual: Reiniciando polling para detectar nuevo sub. ***");
+    startPolling(); // Solo polling; eventos/polling manejan el resto
   }
 });
 
@@ -91,10 +93,9 @@ event.on("mpv.file-loaded", () => {
   if (pollInterval) clearInterval(pollInterval);
   const sid = mpv.getNumber("sid");
   const subVis = mpv.getFlag("sub-visibility");
-  const initialSubText = mpv.getString("sub-text");
-  console.log(`Archivo cargado. SID: ${sid}, Sub vis: ${subVis}, Sub-text inicial: "${initialSubText.substring(0, 50)}..."`);
-  core.osd("Plugin pausa-subs: Activo (con fixes). Chequea logs.");
-  startPolling();
+  console.log(`Archivo cargado. SID: ${sid}, Vis: ${subVis ? 'yes' : 'no'}`);
+  core.osd("Plugin pausa-subs: Pulido y activo.");
+  if (sid > 0) startPolling(); // Solo si hay subs
 });
 
 // Toggle con 'P'
@@ -102,8 +103,11 @@ event.on("mpv.key-press", (event) => {
   if (event.key === "P") {
     pluginEnabled = !pluginEnabled;
     const status = pluginEnabled ? "ACTIVADO" : "DESACTIVADO";
-    console.log(`Plugin ${status}`);
-    core.osd(`Pausa antes de subs: ${status}`);
+    console.log(`Plugin: ${status}`);
+    core.osd(`Pausa-subs: ${status}`);
+    if (!pluginEnabled && checkInterval) {
+      clearInterval(checkInterval); // Limpia si desactivas
+    }
   }
 });
 
