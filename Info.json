@@ -7,5 +7,6 @@
   },
   "entry": "main.js",
   "description": "An IINA plugin to manage Online and Local playlists, including automatic discovery of all media files in nested folders for Local playlists, clipboard URL playlists, and playlist management (play, rename, delete).",
-  "permissions": ["show-osd", "show-alert", "file-system"]
+  "permissions": ["show-osd", "show-alert", "file-system"],
+  "hasSettings": true
 }
