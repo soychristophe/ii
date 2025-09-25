@@ -50,11 +50,16 @@ function getNextSubStart() {
   const sid = mpv.getNumber("sid");
   if (sid <= 0) return 0;
 
-  // FIX: Strings para argumentos
-  mpv.command("sub_step", "1");
-  const nextStart = mpv.getNumber("sub-start");
-  mpv.command("sub_step", " -1"); // Vuelve
-  return nextStart;
+  try {
+    // FIX FINAL: Array de strings
+    mpv.command("sub_step", ["1"]);
+    const nextStart = mpv.getNumber("sub-start");
+    mpv.command("sub_step", ["-1"]); // Vuelve
+    return nextStart;
+  } catch (e) {
+    console.log(`Error en getNextSubStart: ${e.message}. Usando polling puro.`);
+    return 0; // Fallback: No pausa si falla
+  }
 }
 
 // Función para configurar pausa antes del inicio del siguiente sub
@@ -175,18 +180,18 @@ event.on("mpv.key-press", (event) => {
       if (!pluginEnabled && checkInterval) clearInterval(checkInterval);
       break;
     case "Y": // Siguiente
-      mpv.command("sub_step", "1");
+      mpv.command("sub_step", ["1"]);
       console.log("*** Avanzar: Siguiente subtítulo (Y) ***");
       core.osd("⏭️ Siguiente subtítulo");
       break;
-    case "N": // Repetir - FIX: strings
+    case "N": // Repetir - FIX: array de strings
       const subStart = mpv.getNumber("sub-start");
-      mpv.command("seek", subStart.toString(), "absolute");
+      mpv.command("seek", [subStart.toString(), "absolute"]);
       console.log(`*** Repetir: Seek a ${subStart.toFixed(2)}s (N) ***`);
       core.osd("🔄 Repitiendo subtítulo actual");
       break;
     case "C": // Anterior
-      mpv.command("sub_step", " -1");
+      mpv.command("sub_step", ["-1"]);
       console.log("*** Retroceder: Subtítulo anterior (C) ***");
       core.osd("⏮️ Subtítulo anterior");
       break;
@@ -206,7 +211,7 @@ event.on("mpv.file-loaded", () => {
   
   loadSettings(() => {
     console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms, Offset=${timeOffset}s`);
-    core.osd("Plugin activo: Pausa ANTES de subtítulos (sin crashes) + Navegación (C: ant, N: rep, Y: sig).");
+    core.osd("Plugin activo: Pausa ANTES de subtítulos (fix crashes) + Navegación (C: ant, N: rep, Y: sig).");
     if (sid > 0) {
       nextSubStart = getNextSubStart();
       if (nextSubStart > 0) {
@@ -220,7 +225,7 @@ event.on("mpv.file-loaded", () => {
 
 // Inicializar
 loadSettings(() => {
-  console.log("Plugin iniciado: Modo pausa antes de inicio de subs (fixeado).");
+  console.log("Plugin iniciado: Modo pausa antes de inicio de subs (estable).");
 });
 
 // Limpieza
