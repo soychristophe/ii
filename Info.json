@@ -1,7 +1,7 @@
 {
-  "name": "Pausa Antes de Subtítulo",
+  "name": "Pausa-Subtítulos",
   "identifier": "com.soychristophe.pausabeforesub",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Christophe Gomez de la Red"
   },
