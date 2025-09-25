@@ -1,6 +1,11 @@
 {
   "name": "Pausa Antes de Subtítulo",
-  "identifier": "com.ejemplo.pausabeforesub",
+  "identifier": "com.soychristophe.pausabeforesub",
   "version": "1.0.0",
-  "entry": "main.js"
+  "author": {
+    "name": "Christophe Gomez de la Red"
+  },
+  "entry": "main.js",
+  "description": "An IINA plugin to manage Online and Local playlists, including automatic discovery of all media files in nested folders for Local playlists, clipboard URL playlists, and playlist management (play, rename, delete).",
+  "permissions": ["show-osd", "show-alert", "file-system"]
 }
