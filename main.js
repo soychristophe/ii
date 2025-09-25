@@ -11,11 +11,12 @@ let pluginEnabled = true;
 let pauseMargin = 0.5;
 let checkIntervalMs = 100;
 let pollIntervalMs = 200;
+let timeOffset = 0; // Nuevo: Offset para calibrar pausa
 
 // Cargar settings ASÍNCRONAMENTE
 function loadSettings(callback) {
   let loaded = 0;
-  const total = 3;
+  const total = 4; // Aumentado por timeOffset
 
   function checkLoaded() {
     loaded++;
@@ -36,9 +37,14 @@ function loadSettings(callback) {
     pollIntervalMs = parseInt(value) || 200;
     checkLoaded();
   });
+
+  preferences.get("timeOffset", (value) => {
+    timeOffset = parseFloat(value) || 0;
+    checkLoaded();
+  });
 }
 
-// Función para pausar antes del siguiente subtítulo
+// Función para pausar antes del siguiente subtítulo (con offset)
 function setupPauseBeforeNextSub() {
   if (checkInterval) clearInterval(checkInterval);
 
@@ -49,7 +55,8 @@ function setupPauseBeforeNextSub() {
     return;
   }
 
-  console.log(`Configurando pausa: Fin en ${currentSubEnd.toFixed(2)}s (margen=${pauseMargin}s, intervalo=${checkIntervalMs}ms)`);
+  const adjustedEnd = currentSubEnd + timeOffset; // Aplicar offset
+  console.log(`Configurando pausa: Fin ajustado=${adjustedEnd.toFixed(2)}s (margen=${pauseMargin}s, offset=${timeOffset}s, intervalo=${checkIntervalMs}ms)`);
 
   checkInterval = setInterval(() => {
     const nowTime = mpv.getNumber("playback-time");
@@ -58,12 +65,12 @@ function setupPauseBeforeNextSub() {
     const sid = mpv.getNumber("sid");
 
     if (Math.floor(nowTime * 10) % 5 === 0) {
-      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin=${currentSubEnd.toFixed(2)}s`);
+      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s`);
     }
 
-    if (!isPaused && subVisibility && sid > 0 && nowTime >= (currentSubEnd - pauseMargin) && nowTime < currentSubEnd + 1) {
+    if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
       core.pause();
-      console.log(`*** PAUSADO AUTO a ${nowTime.toFixed(2)}s ***`);
+      console.log(`*** PAUSADO AUTO a ${nowTime.toFixed(2)}s (fin ajustado: ${adjustedEnd.toFixed(2)}s) ***`);
       core.osd("⏸️ Pausa: Play para siguiente subtítulo");
       clearInterval(checkInterval);
     }
@@ -113,8 +120,12 @@ event.on("mpv.pause.changed", () => {
   }
 });
 
-// Evento: Teclas personalizadas (toggle P + navegación D/S/A)
+// ... (todo el código anterior igual hasta el evento de teclas)
+
+// Evento: Teclas personalizadas (toggle P + navegación Q/W/E)
 event.on("mpv.key-press", (event) => {
+  console.log(`Tecla presionada: "${event.key}"`); // Log para debug: confirma detección
+
   const sid = mpv.getNumber("sid");
   if (sid <= 0) {
     core.osd("No hay subtítulos activos para navegar.", "warning");
@@ -129,52 +140,26 @@ event.on("mpv.key-press", (event) => {
       core.osd(`Pausa-subs: ${status}`);
       if (!pluginEnabled && checkInterval) clearInterval(checkInterval);
       break;
-    case "D": // Siguiente subtítulo
+    case "E": // Siguiente subtítulo (era D)
       mpv.command("sub_step", 1);
-      console.log("*** Avanzar: Siguiente subtítulo ***");
+      console.log("*** Avanzar: Siguiente subtítulo (E) ***");
       core.osd("⏭️ Siguiente subtítulo");
       break;
-    case "S": // Repetir actual
+    case "W": // Repetir actual (era S)
       const subStart = mpv.getNumber("sub-start");
       mpv.command("seek", subStart, "absolute");
-      console.log(`*** Repetir: Seek a inicio sub (${subStart.toFixed(2)}s) ***`);
+      console.log(`*** Repetir: Seek a inicio sub (${subStart.toFixed(2)}s) (W) ***`);
       core.osd("🔄 Repitiendo subtítulo actual");
       break;
-    case "A": // Anterior subtítulo
+    case "Q": // Anterior subtítulo (era A)
       mpv.command("sub_step", -1);
-      console.log("*** Retroceder: Subtítulo anterior ***");
+      console.log("*** Retroceder: Subtítulo anterior (Q) ***");
       core.osd("⏮️ Subtítulo anterior");
       break;
     default:
+      // No log para evitar spam
       break;
   }
 });
 
-// Al cargar archivo
-event.on("mpv.file-loaded", () => {
-  currentSubEnd = 0;
-  lastSubText = "";
-  if (checkInterval) clearInterval(checkInterval);
-  if (pollInterval) clearInterval(pollInterval);
-  const sid = mpv.getNumber("sid");
-  const subVis = mpv.getFlag("sub-visibility");
-  console.log(`Archivo cargado. SID: ${sid}, Vis: ${subVis ? 'yes' : 'no'}`);
-  
-  loadSettings(() => {
-    console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms`);
-    core.osd("Plugin activo: Pausa + Navegación (D: sig, S: rep, A: ant).");
-    if (sid > 0) startPolling();
-  });
-});
-
-// Inicializar
-loadSettings(() => {
-  console.log("Plugin iniciado con navegación.");
-});
-
-// Limpieza
-event.on("iina.will-unload", () => {
-  if (checkInterval) clearInterval(checkInterval);
-  if (pollInterval) clearInterval(pollInterval);
-  console.log("Plugin descargado.");
-});
+// ... (resto del código igual)
