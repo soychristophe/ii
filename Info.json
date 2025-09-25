@@ -1,0 +1,6 @@
+{
+  "name": "Pausa Antes de Subtítulo",
+  "identifier": "com.ejemplo.pausabeforesub",
+  "version": "1.0.0",
+  "entry": "main.js"
+}
