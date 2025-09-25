@@ -3,7 +3,7 @@ const { console, core, event, mpv, preferences } = iina;
 // Variables
 let checkInterval = null;
 let pollInterval = null;
-let nextSubStart = 0; // Ahora usamos el start del SIGUIENTE sub
+let nextSubStart = 0; // Start del SIGUIENTE sub
 let lastSubText = "";
 let pluginEnabled = true;
 
@@ -49,11 +49,10 @@ function getNextSubStart() {
   const sid = mpv.getNumber("sid");
   if (sid <= 0) return 0;
 
-  // Salta al siguiente sub temporalmente
-  mpv.command("sub_step", 1);
+  // FIX: Usa array para argumentos
+  mpv.command("sub_step", [1]);
   const nextStart = mpv.getNumber("sub-start");
-  // Vuelve al anterior
-  mpv.command("sub_step", -1);
+  mpv.command("sub_step", [-1]); // Vuelve
   return nextStart;
 }
 
@@ -62,11 +61,10 @@ function setupPauseBeforeNextSubStart() {
   if (checkInterval) clearInterval(checkInterval);
 
   const currentTime = mpv.getNumber("playback-time");
-  const adjustedStart = nextSubStart + timeOffset; // Aplicar offset
+  const adjustedStart = nextSubStart + timeOffset;
   
   if (currentTime >= adjustedStart) {
     console.log(`Ya pasamos el inicio del sub (tiempo=${currentTime.toFixed(2)}s >= start=${adjustedStart.toFixed(2)}s). Configurando para el próximo.`);
-    // Obtén el siguiente-siguiente si ya pasó
     nextSubStart = getNextSubStart();
     return setupPauseBeforeNextSubStart(); // Recursivo para actualizar
   }
@@ -98,7 +96,7 @@ function startPolling() {
   pollInterval = setInterval(() => {
     setTimeout(() => {
       const subText = mpv.getString("sub-text");
-      if (subText.trim() === "" && lastSubText !== "") { // Fin de sub detectado (texto vacío después de tenerlo)
+      if (subText.trim() === "" && lastSubText !== "") { // Fin de sub detectado
         lastSubText = "";
         console.log("*** Fin de sub detectado por POLLING. Preparando pausa para próximo. ***");
         nextSubStart = getNextSubStart();
@@ -144,7 +142,7 @@ event.on("mpv.pause.changed", () => {
   }
 });
 
-// Evento: Teclas (C/N/Y)
+// Evento: Teclas (C/N/Y) - FIX en seek
 event.on("mpv.key-press", (event) => {
   console.log(`Tecla presionada: "${event.key}"`);
 
@@ -163,18 +161,18 @@ event.on("mpv.key-press", (event) => {
       if (!pluginEnabled && checkInterval) clearInterval(checkInterval);
       break;
     case "Y": // Siguiente
-      mpv.command("sub_step", 1);
+      mpv.command("sub_step", [1]);
       console.log("*** Avanzar: Siguiente subtítulo (Y) ***");
       core.osd("⏭️ Siguiente subtítulo");
       break;
-    case "N": // Repetir
+    case "N": // Repetir - FIX: array para seek
       const subStart = mpv.getNumber("sub-start");
-      mpv.command("seek", subStart, "absolute");
+      mpv.command("seek", [subStart, "absolute"]);
       console.log(`*** Repetir: Seek a ${subStart.toFixed(2)}s (N) ***`);
       core.osd("🔄 Repitiendo subtítulo actual");
       break;
     case "C": // Anterior
-      mpv.command("sub_step", -1);
+      mpv.command("sub_step", [-1]);
       console.log("*** Retroceder: Subtítulo anterior (C) ***");
       core.osd("⏮️ Subtítulo anterior");
       break;
@@ -195,7 +193,6 @@ event.on("mpv.file-loaded", () => {
     console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms, Offset=${timeOffset}s`);
     core.osd("Plugin activo: Pausa ANTES de subtítulos + Navegación (C: ant, N: rep, Y: sig).");
     if (sid > 0) {
-      // Para el primer sub
       nextSubStart = getNextSubStart();
       console.log(`Primer sub inicia en: ${nextSubStart.toFixed(2)}s`);
       startPolling();
