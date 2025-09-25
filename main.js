@@ -3,10 +3,9 @@ const { console, core, event, mpv, preferences } = iina;
 // Variables
 let checkInterval = null;
 let pollInterval = null;
-let nextSubStart = 0; // Start del SIGUIENTE sub
+let currentSubEnd = 0; // Fin del subtítulo ACTUAL
 let lastSubText = "";
 let pluginEnabled = true;
-let recursionGuard = 0; // Guardia para evitar recursión infinita
 
 // Defaults
 let pauseMargin = 0.5;
@@ -45,47 +44,19 @@ function loadSettings(callback) {
   });
 }
 
-// Función para obtener el start del siguiente subtítulo (sin afectar playback)
-function getNextSubStart() {
-  const sid = mpv.getNumber("sid");
-  if (sid <= 0) return 0;
-
-  try {
-    // FIX FINAL: Array de strings
-    mpv.command("sub_step", ["1"]);
-    const nextStart = mpv.getNumber("sub-start");
-    mpv.command("sub_step", ["-1"]); // Vuelve
-    return nextStart;
-  } catch (e) {
-    console.log(`Error en getNextSubStart: ${e.message}. Usando polling puro.`);
-    return 0; // Fallback: No pausa si falla
-  }
-}
-
-// Función para configurar pausa antes del inicio del siguiente sub
-function setupPauseBeforeNextSubStart() {
-  recursionGuard++;
-  if (recursionGuard > 3) { // Guardia anti-loop
-    console.log("*** Guardia: Recursión excedida. Reiniciando. ***");
-    recursionGuard = 0;
-    return;
-  }
-
+// Función para configurar pausa cerca del final del subtítulo actual
+function setupPauseBeforeNextSub() {
   if (checkInterval) clearInterval(checkInterval);
 
   const currentTime = mpv.getNumber("playback-time");
-  const adjustedStart = nextSubStart + timeOffset;
+  const adjustedEnd = currentSubEnd + timeOffset; // Offset para calibrar
   
-  if (currentTime >= adjustedStart || nextSubStart <= 0 || isNaN(nextSubStart)) {
-    console.log(`Pasamos inicio o sin próximo sub (tiempo=${currentTime.toFixed(2)}s, start=${adjustedStart.toFixed(2)}s). Actualizando próximo.`);
-    nextSubStart = getNextSubStart();
-    recursionGuard = 0; // Reset guardia
-    return setupPauseBeforeNextSubStart(); // Recursivo con guardia
+  if (currentTime > adjustedEnd) {
+    console.log(`Sub ya terminó (tiempo=${currentTime.toFixed(2)}s > fin=${adjustedEnd.toFixed(2)}s). Esperando nuevo.`);
+    return;
   }
 
-  recursionGuard = 0; // Reset si OK
-
-  console.log(`Configurando pausa antes de sub: Start ajustado=${adjustedStart.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s, offset=${timeOffset}s)`);
+  console.log(`Configurando pausa: Fin ajustado=${adjustedEnd.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s, offset=${timeOffset}s)`);
 
   checkInterval = setInterval(() => {
     const nowTime = mpv.getNumber("playback-time");
@@ -94,65 +65,53 @@ function setupPauseBeforeNextSubStart() {
     const sid = mpv.getNumber("sid");
 
     if (Math.floor(nowTime * 10) % 5 === 0) {
-      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, start_prox=${adjustedStart.toFixed(2)}s`);
+      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s`);
     }
 
-    if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedStart - pauseMargin) && nowTime < adjustedStart + 0.5) {
+    if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
       core.pause();
-      console.log(`*** PAUSADO ANTES DE SUB a ${nowTime.toFixed(2)}s (start: ${adjustedStart.toFixed(2)}s) ***`);
-      core.osd("⏸️ Pausa: Play para revelar subtítulo");
+      console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
+      core.osd("⏸️ Pausa: Play para siguiente subtítulo");
       clearInterval(checkInterval);
     }
   }, checkIntervalMs);
 }
 
-// Polling de respaldo para detectar fin de sub (sub-text vacío)
+// Polling de respaldo para detectar cambios en sub-text (FIX: chequea undefined)
 function startPolling() {
   if (pollInterval) clearInterval(pollInterval);
   pollInterval = setInterval(() => {
     setTimeout(() => {
       const subText = mpv.getString("sub-text");
-      if (subText.trim() === "" && lastSubText !== "") { // Fin de sub detectado
-        lastSubText = "";
-        console.log("*** Fin de sub detectado por POLLING. Preparando pausa para próximo. ***");
-        nextSubStart = getNextSubStart();
-        if (pluginEnabled && nextSubStart > 0) {
-          setupPauseBeforeNextSubStart();
+      if (subText && subText.trim() !== "" && subText !== lastSubText) { // FIX: if (subText) antes de trim
+        lastSubText = subText;
+        currentSubEnd = mpv.getNumber("sub-end");
+        console.log(`*** Nuevo sub por POLLING: fin=${currentSubEnd.toFixed(2)}s ***`);
+        if (pluginEnabled) {
+          setupPauseBeforeNextSub();
         }
-      } else if (subText && subText.trim() !== "" && subText !== lastSubText) {
-        lastSubText = subText; // Actualiza para próximo fin
       }
     }, 50);
   }, pollIntervalMs);
 }
 
-// Evento principal: Fin de subtítulo actual (ignora 0s)
-event.on("mpv.sub-end.changed", () => {
-  const subEnd = mpv.getNumber("sub-end");
+// Evento: Inicio de nuevo subtítulo (principal)
+event.on("mpv.sub-start.changed", () => {
+  const subStart = mpv.getNumber("sub-start");
+  const subText = mpv.getString("sub-text");
   const sid = mpv.getNumber("sid");
-  if (subEnd === 0) return; // Ignora subs inválidos/vacíos
-  console.log(`*** EVENTO sub-end.changed: Fin en ${subEnd.toFixed(2)}s, SID: ${sid} ***`);
   
-  if (sid > 0 && pluginEnabled) {
-    nextSubStart = getNextSubStart();
-    if (nextSubStart > 0) {
-      console.log(`Próximo sub inicia en: ${nextSubStart.toFixed(2)}s`);
-      setupPauseBeforeNextSubStart();
+  if (sid > 0 && subText && subText.trim() !== "") { // FIX: chequea subText antes de trim
+    currentSubEnd = mpv.getNumber("sub-end");
+    lastSubText = subText;
+    console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s ***`);
+    if (pluginEnabled) {
+      setupPauseBeforeNextSub();
     }
   }
 });
 
-// Evento: Inicio de nuevo subtítulo (actualiza lastSubText)
-event.on("mpv.sub-start.changed", () => {
-  const subStart = mpv.getNumber("sub-start");
-  const subText = mpv.getString("sub-text");
-  if (mpv.getNumber("sid") > 0 && subText && subText.trim() !== "") {
-    lastSubText = subText;
-    console.log(`*** Nuevo sub iniciado en ${subStart.toFixed(2)}s ***`);
-  }
-});
-
-// Evento: Play manual (reinicia polling)
+// Evento: Play manual (solo reinicia polling, evita doble pausa)
 event.on("mpv.pause.changed", () => {
   const isPaused = mpv.getFlag("pause");
   if (!isPaused) {
@@ -161,7 +120,7 @@ event.on("mpv.pause.changed", () => {
   }
 });
 
-// Evento: Teclas (C/N/Y) - FIX en seek
+// Evento: Teclas (C/N/Y) - Con fix para comandos
 event.on("mpv.key-press", (event) => {
   console.log(`Tecla presionada: "${event.key}"`);
 
@@ -184,7 +143,7 @@ event.on("mpv.key-press", (event) => {
       console.log("*** Avanzar: Siguiente subtítulo (Y) ***");
       core.osd("⏭️ Siguiente subtítulo");
       break;
-    case "N": // Repetir - FIX: array de strings
+    case "N": // Repetir
       const subStart = mpv.getNumber("sub-start");
       mpv.command("seek", [subStart.toString(), "absolute"]);
       console.log(`*** Repetir: Seek a ${subStart.toFixed(2)}s (N) ***`);
@@ -200,9 +159,8 @@ event.on("mpv.key-press", (event) => {
 
 // Al cargar archivo
 event.on("mpv.file-loaded", () => {
-  nextSubStart = 0;
+  currentSubEnd = 0;
   lastSubText = "";
-  recursionGuard = 0;
   if (checkInterval) clearInterval(checkInterval);
   if (pollInterval) clearInterval(pollInterval);
   const sid = mpv.getNumber("sid");
@@ -211,21 +169,14 @@ event.on("mpv.file-loaded", () => {
   
   loadSettings(() => {
     console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms, Offset=${timeOffset}s`);
-    core.osd("Plugin activo: Pausa ANTES de subtítulos (fix crashes) + Navegación (C: ant, N: rep, Y: sig).");
-    if (sid > 0) {
-      nextSubStart = getNextSubStart();
-      if (nextSubStart > 0) {
-        console.log(`Primer sub inicia en: ${nextSubStart.toFixed(2)}s`);
-      }
-      startPolling();
-      if (pluginEnabled) setupPauseBeforeNextSubStart();
-    }
+    core.osd("Plugin activo: Pausa al final del sub + Navegación (C: ant, N: rep, Y: sig).");
+    if (sid > 0) startPolling();
   });
 });
 
 // Inicializar
 loadSettings(() => {
-  console.log("Plugin iniciado: Modo pausa antes de inicio de subs (estable).");
+  console.log("Plugin iniciado: Pausa estable al final del subtítulo (fix undefined).");
 });
 
 // Limpieza
