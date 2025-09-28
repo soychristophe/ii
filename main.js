@@ -95,7 +95,7 @@ function startPolling() {
   }, pollIntervalMs);
 }
 
-// Función helper para navegar subtítulos
+// Función helper para navegar subtítulos (ACTUALIZADA: usa sub-seek para mover video time)
 function handleSubtitleNavigation(command) {
   const sid = mpv.getNumber("sid");
   if (sid <= 0) {
@@ -105,23 +105,18 @@ function handleSubtitleNavigation(command) {
   
   switch(command) {
     case "next":
-      mpv.command("sub_step", ["1"]);
-      console.log("*** Avanzar: Siguiente subtítulo ***");
+      mpv.command("sub-seek", ["1"]);
+      console.log("*** Avanzar: Siguiente subtítulo (seek video) ***");
       core.osd("⏭️ Siguiente subtítulo");
       break;
     case "repeat":
-      const subStart = mpv.getNumber("sub-start");
-      if (subStart && subStart > 0) {
-        mpv.command("seek", [subStart.toString(), "absolute"]);
-        console.log(`*** Repetir: Seek a ${subStart.toFixed(2)}s ***`);
-        core.osd("🔄 Repitiendo subtítulo actual");
-      } else {
-        core.osd("⚠️ No se puede repetir el subtítulo actual");
-      }
+      mpv.command("sub-seek", ["0"]);
+      console.log("*** Repetir: Seek a inicio subtítulo actual ***");
+      core.osd("🔄 Repitiendo subtítulo actual");
       break;
     case "previous":
-      mpv.command("sub_step", ["-1"]);
-      console.log("*** Retroceder: Subtítulo anterior ***");
+      mpv.command("sub-seek", ["-1"]);
+      console.log("*** Retroceder: Subtítulo anterior (seek video) ***");
       core.osd("⏮️ Subtítulo anterior");
       break;
     case "toggle":
@@ -158,9 +153,6 @@ event.on("mpv.pause.changed", () => {
     startPolling();
   }
 });
-
-// MÉTODO 1: Usar onKeyDown con el formato correcto
-// Según la documentación, onKeyDown acepta una key string y un callback
 
 // Registrar tecla P para toggle
 input.onKeyDown("p", (data) => {
