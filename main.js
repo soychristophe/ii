@@ -14,7 +14,7 @@ let checkIntervalMs = 100;
 let pollIntervalMs = 200;
 let timeOffset = 0;
 let autoRepeatEnabled = false;
-let repeatTimes = 2;
+let repeatTimes = 5;
 
 // Cargar settings ASÍNCRONAMENTE
 function loadSettings(callback) {
@@ -52,7 +52,7 @@ function loadSettings(callback) {
   });
 
   preferences.get("repeatTimes", (value) => {
-    repeatTimes = parseInt(value) || 2;
+    repeatTimes = parseInt(value) || 5;
     checkLoaded();
   });
 }
@@ -84,15 +84,16 @@ function setupPauseBeforeNextSub() {
     if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
       if (autoRepeatEnabled && remainingPlays > 1) {
         const thisRepeatNum = repeatTimes - remainingPlays + 1;
-        console.log(`*** Repitiendo subtítulo ${thisRepeatNum}/${repeatTimes} a ${nowTime.toFixed(2)}s ***`);
+        console.log(`*** Repitiendo subtítulo ${thisRepeatNum}/${repeatTimes} a ${nowTime.toFixed(2)}s (quedan ${remainingPlays - 1} reps) ***`);
         mpv.command("sub-seek", ["0"]);
         remainingPlays--;
         core.resume();
         clearInterval(checkInterval);
         setupPauseBeforeNextSub();
       } else if (autoRepeatEnabled && remainingPlays === 1) {
-        console.log(`*** Última reproducción completada a ${nowTime.toFixed(2)}s. Continuando al siguiente... ***`);
+        console.log(`*** Última reproducción completada a ${nowTime.toFixed(2)}s (${repeatTimes} reps totales). Continuando al siguiente... ***`);
         clearInterval(checkInterval);
+        // No pausar: dejar que continúe naturalmente
       } else {
         core.pause();
         console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
@@ -165,7 +166,7 @@ event.on("mpv.sub-start.changed", () => {
   const subText = mpv.getString("sub-text");
   const sid = mpv.getNumber("sid");
   
-  if (sid > 0 && subText && subText.trim() !== "") {
+  if (sid > 0 && subText && subText.trim() !== "" && subText !== lastSubText) {
     currentSubEnd = mpv.getNumber("sub-end");
     lastSubText = subText;
     console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s ***`);
@@ -306,7 +307,7 @@ event.on("mpv.file-loaded", () => {
     // Mostrar instrucciones detalladas
     let instructions = `📺 Plugin de Subtítulos Activo\n\nIntenta estas opciones:\n1) Teclas directas: P, A, S, D\n2) Con menú: Ctrl+Shift+P/A/S/D\n3) Configura en IINA Preferences:\n   - script-message subtitle-previous\n   - script-message subtitle-repeat\n   - script-message subtitle-next`;
     if (autoRepeatEnabled) {
-      instructions += `\n\n🔄 Auto-repeat ACTIVADO (${repeatTimes} veces total por subtítulo)`;
+      instructions += `\n\n🔄 Auto-repeat ACTIVADO (${repeatTimes} reps totales por subtítulo)`;
     }
     core.osd(instructions);
     
@@ -337,7 +338,7 @@ setTimeout(() => {
 // Inicializar
 loadSettings(() => {
   console.log("=================================");
-  console.log("Plugin de Subtítulos v2.0 Iniciado");
+  console.log("Plugin de Subtítulos v1.1.7 Iniciado (con Auto-Repeat)");
   console.log("=================================");
   console.log("MÉTODOS DE CONTROL DISPONIBLES:");
   console.log("");
@@ -360,7 +361,7 @@ loadSettings(() => {
   console.log("   script-message subtitle-toggle");
   if (autoRepeatEnabled) {
     console.log("");
-    console.log(`🔄 Auto-repeat: ${repeatTimes} veces total por subtítulo`);
+    console.log(`🔄 Auto-repeat: ${repeatTimes} reps totales por subtítulo (simula ${repeatTimes - 1} 'S' manuales)`);
   }
   console.log("=================================");
 });

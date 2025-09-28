@@ -1,54 +1,58 @@
-<div>
-  <label>
-    <input type="checkbox" name="autoRepeat" id="autoRepeat"> Auto-repeat subtítulos
-  </label>
-</div>
-<div id="repeatTimesDiv" style="display: none; margin-left: 20px;">
-  <label>
-    Número de repeticiones (total por subtítulo): 
-    <input type="number" name="repeatTimes" id="repeatTimes" min="2" max="10" step="1" value="2">
-  </label>
-</div>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pausa-Subtítulos Preferences</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 20px; }
+    .section { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; }
+    input[type="number"], input[type="checkbox"] { margin-left: 10px; }
+    .description { font-size: 0.9em; color: #666; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Pausa-Subtítulos Settings</h1>
+  
+  <div class="section">
+    <label>
+      <input type="checkbox" id="autoRepeat"> Auto-repeat subtítulos
+    </label>
+    <div class="description">Activa la repetición automática de cada subtítulo antes de continuar.</div>
+    
+    <label>
+      Número de repeticiones (total por subtítulo): 
+      <input type="number" id="repeatTimes" min="1" max="10" value="5">
+    </label>
+    <div class="description">Cuántas veces reproducir cada subtítulo en total (ej. 5 = 1 original + 4 repeticiones).</div>
+  </div>
 
-<div>
-  <label>Margen de pausa (segundos):</label>
-  <input type="number" name="pauseMargin" id="pauseMargin" step="0.1" value="0">
-  <small>Cuántos segundos antes del fin pausar.</small>
-</div>
+  <div class="section">
+    <label>
+      Margen de pausa (segundos): <input type="number" id="pauseMargin" step="0.1" value="0">
+    </label>
+    <div class="description">Cuántos segundos antes del fin pausar (o repetir si auto-repeat está activo).</div>
+  </div>
 
-<div>
-  <label>Intervalo de chequeo (ms):</label>
-  <input type="number" name="checkIntervalMs" id="checkIntervalMs" value="100">
-  <small>Frecuencia durante el subtítulo (menor = más preciso).</small>
-</div>
+  <div class="section">
+    <label>
+      Intervalo de chequeo (ms): <input type="number" id="checkIntervalMs" value="100">
+    </label>
+    <div class="description">Frecuencia durante el subtítulo (menor = más preciso, pero usa más CPU).</div>
+  </div>
 
-<div>
-  <label>Intervalo de polling (ms):</label>
-  <input type="number" name="pollIntervalMs" id="pollIntervalMs" value="200">
-  <small>Frecuencia para detectar nuevos subtítulos.</small>
-</div>
+  <div class="section">
+    <label>
+      Intervalo de polling (ms): <input type="number" id="pollIntervalMs" value="200">
+    </label>
+    <div class="description">Frecuencia para detectar nuevos subtítulos (menor = más reactivo).</div>
+  </div>
 
-<div>
-  <label>Compensación de tiempo (segundos):</label>
-  <input type="number" name="timeOffset" id="timeOffset" step="0.1" value="0">
-  <small>Ajuste para desfases (negativo si pausa antes, positivo si después).</small>
-</div>
-
-<script>
-  const autoRepeatCb = document.getElementById('autoRepeat');
-  const repeatDiv = document.getElementById('repeatTimesDiv');
-  const repeatInput = document.getElementById('repeatTimes');
-
-  autoRepeatCb.addEventListener('change', () => {
-    repeatDiv.style.display = autoRepeatCb.checked ? 'block' : 'none';
-  });
-
-  // Initialize display based on default (false, so hidden)
-  repeatDiv.style.display = autoRepeatCb.checked ? 'block' : 'none';
-
-  // Enforce min/max on input
-  repeatInput.addEventListener('input', () => {
-    if (repeatInput.value < 2) repeatInput.value = 2;
-    if (repeatInput.value > 10) repeatInput.value = 10;
-  });
-</script>
+  <div class="section">
+    <label>
+      Compensación de tiempo (segundos): <input type="number" id="timeOffset" step="0.1" value="0">
+    </label>
+    <div class="description">Ajuste para desfases en subtítulos (negativo si pausa antes, positivo si después).</div>
+  </div>
+</body>
+</html>

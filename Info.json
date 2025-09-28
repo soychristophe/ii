@@ -1,15 +1,14 @@
 {
   "name": "Pausa-Subtítulos",
   "identifier": "com.soychristophe.pausabeforesub",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "homepage": "",
   "author": {
     "name": "Christophe Gomez de la Red"
   },
-
   "entry": "main.js",
   "minAPIVersion": "1.0",
-  "description": "An n nested .",
+  "description": "Pausa automáticamente antes del siguiente subtítulo. Incluye auto-repeat para reproducir subtítulos múltiples veces antes de continuar.",
   "permissions": [
     "show-osd", 
     "show-alert", 
@@ -27,6 +26,6 @@
     "pollIntervalMs": 200,
     "timeOffset": 0,
     "autoRepeat": false,
-    "repeatTimes": 2
+    "repeatTimes": 5
   }
 }
