@@ -6,24 +6,20 @@ let pollInterval = null;
 let currentSubEnd = 0;
 let lastSubText = "";
 let pluginEnabled = true;
-
-// Nuevas variables para auto-repeat
-let autoRepeatMode = false;
-let repeatCount = 0;
-let autoRepeatTimes = 1;
-let currentSubStart = 0;
-let originalSubText = "";
+let remainingPlays = 1;
 
 // Defaults
 let pauseMargin = 0.0;
 let checkIntervalMs = 100;
 let pollIntervalMs = 200;
 let timeOffset = 0;
+let autoRepeatEnabled = false;
+let repeatTimes = 2;
 
 // Cargar settings ASÍNCRONAMENTE
 function loadSettings(callback) {
   let loaded = 0;
-  const total = 5;
+  const total = 6;
 
   function checkLoaded() {
     loaded++;
@@ -50,8 +46,13 @@ function loadSettings(callback) {
     checkLoaded();
   });
 
-  preferences.get("autoRepeatTimes", (value) => {
-    autoRepeatTimes = parseInt(value) || 1;
+  preferences.get("autoRepeat", (value) => {
+    autoRepeatEnabled = value === true || value === "true";
+    checkLoaded();
+  });
+
+  preferences.get("repeatTimes", (value) => {
+    repeatTimes = parseInt(value) || 2;
     checkLoaded();
   });
 }
@@ -81,32 +82,23 @@ function setupPauseBeforeNextSub() {
     }
 
     if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
-      // Lógica de auto-repeat (independiente)
-      if (autoRepeatMode) {
-        if (repeatCount > 0) {
-          // Repetir: seek al inicio del subtítulo
-          mpv.setNumber("time-pos", currentSubStart);
-          repeatCount--;
-          const repsDone = autoRepeatTimes - repeatCount;
-          console.log(`*** AUTO-REPEAT: Repetición ${repsDone}/${autoRepeatTimes} - Seek a ${currentSubStart.toFixed(2)}s, restantes: ${repeatCount}`);
-          core.osd(`🔄 Rep ${repsDone}/${autoRepeatTimes}`);
-          return; // Continuar reproducción, no pausar
-        } else {
-          // Completado: desactivar modo y continuar sin pausar
-          autoRepeatMode = false;
-          repeatCount = 0;
-          originalSubText = "";
-          console.log("*** AUTO-REPEAT completado, continuando al siguiente subtítulo... ***");
-          core.osd("✅ Repeticiones terminadas - Siguiente subtítulo");
-          return; // No pausar
-        }
+      if (autoRepeatEnabled && remainingPlays > 1) {
+        const thisRepeatNum = repeatTimes - remainingPlays + 1;
+        console.log(`*** Repitiendo subtítulo ${thisRepeatNum}/${repeatTimes} a ${nowTime.toFixed(2)}s ***`);
+        mpv.command("sub-seek", ["0"]);
+        remainingPlays--;
+        core.resume();
+        clearInterval(checkInterval);
+        setupPauseBeforeNextSub();
+      } else if (autoRepeatEnabled && remainingPlays === 1) {
+        console.log(`*** Última reproducción completada a ${nowTime.toFixed(2)}s. Continuando al siguiente... ***`);
+        clearInterval(checkInterval);
+      } else {
+        core.pause();
+        console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
+        core.osd("⏸️ Pausa: Play para siguiente subtítulo");
+        clearInterval(checkInterval);
       }
-
-      // Lógica normal de pausa si no está en auto-repeat
-      core.pause();
-      console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
-      core.osd("⏸️ Pausa: Play para siguiente subtítulo");
-      clearInterval(checkInterval);
     }
   }, checkIntervalMs);
 }
@@ -121,15 +113,8 @@ function startPolling() {
         lastSubText = subText;
         currentSubEnd = mpv.getNumber("sub-end");
         console.log(`*** Nuevo sub por POLLING: fin=${currentSubEnd.toFixed(2)}s ***`);
-        // Verificar si cambia subtítulo durante auto-repeat
-        if (autoRepeatMode && subText.trim() !== originalSubText.trim()) {
-          autoRepeatMode = false;
-          repeatCount = 0;
-          originalSubText = "";
-          console.log("*** AUTO-REPEAT cancelado por cambio de subtítulo ***");
-          core.osd("❌ Auto-repeat cancelado");
-        }
         if (pluginEnabled) {
+          remainingPlays = autoRepeatEnabled ? repeatTimes : 1;
           setupPauseBeforeNextSub();
         }
       }
@@ -151,13 +136,6 @@ function handleSubtitleNavigation(command) {
       console.log("*** Avanzar: Siguiente subtítulo (seek video) ***");
       core.osd("⏭️ Siguiente subtítulo");
       core.resume();
-      // Desactivar auto-repeat si está activo
-      if (autoRepeatMode) {
-        autoRepeatMode = false;
-        repeatCount = 0;
-        originalSubText = "";
-        console.log("*** AUTO-REPEAT cancelado por navegación manual ***");
-      }
       break;
     case "repeat":
       mpv.command("sub-seek", ["0"]);
@@ -170,13 +148,6 @@ function handleSubtitleNavigation(command) {
       console.log("*** Retroceder: Subtítulo anterior (seek video) ***");
       core.osd("⏮️ Subtítulo anterior");
       core.resume();
-      // Desactivar auto-repeat si está activo
-      if (autoRepeatMode) {
-        autoRepeatMode = false;
-        repeatCount = 0;
-        originalSubText = "";
-        console.log("*** AUTO-REPEAT cancelado por navegación manual ***");
-      }
       break;
     case "toggle":
       pluginEnabled = !pluginEnabled;
@@ -184,35 +155,6 @@ function handleSubtitleNavigation(command) {
       console.log(`Plugin: ${status}`);
       core.osd(`Pausa-subs: ${status}`);
       if (!pluginEnabled && checkInterval) clearInterval(checkInterval);
-      break;
-    case "auto-repeat":
-      const subText = mpv.getString("sub-text");
-      if (!subText || subText.trim() === "") {
-        core.osd("❌ No hay subtítulo actual para auto-repetir", "warning");
-        return;
-      }
-      if (!autoRepeatMode) {
-        // Activar auto-repeat
-        currentSubStart = mpv.getNumber("sub-start");
-        currentSubEnd = mpv.getNumber("sub-end");
-        repeatCount = autoRepeatTimes;
-        originalSubText = subText;
-        autoRepeatMode = true;
-        const now = mpv.getNumber("playback-time");
-        if (now > currentSubStart + 0.5) {
-          mpv.setNumber("time-pos", currentSubStart);
-        }
-        console.log(`*** AUTO-REPEAT ON: ${repeatCount} repeticiones desde ${currentSubStart.toFixed(2)}s hasta ${currentSubEnd.toFixed(2)}s`);
-        core.osd(`🔄 Auto-repeat activado: ${repeatCount} reps`);
-        core.resume();
-      } else {
-        // Desactivar
-        autoRepeatMode = false;
-        repeatCount = 0;
-        originalSubText = "";
-        console.log("*** AUTO-REPEAT OFF ***");
-        core.osd("➡️ Auto-repeat desactivado");
-      }
       break;
   }
 }
@@ -227,15 +169,8 @@ event.on("mpv.sub-start.changed", () => {
     currentSubEnd = mpv.getNumber("sub-end");
     lastSubText = subText;
     console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s ***`);
-    // Verificar si cambia subtítulo durante auto-repeat
-    if (autoRepeatMode && subText.trim() !== originalSubText.trim()) {
-      autoRepeatMode = false;
-      repeatCount = 0;
-      originalSubText = "";
-      console.log("*** AUTO-REPEAT cancelado por cambio de subtítulo ***");
-      core.osd("❌ Auto-repeat cancelado");
-    }
     if (pluginEnabled) {
+      remainingPlays = autoRepeatEnabled ? repeatTimes : 1;
       setupPauseBeforeNextSub();
     }
   }
@@ -273,13 +208,6 @@ input.onKeyDown("s", (data) => {
 input.onKeyDown("d", (data) => {
   console.log("Tecla D detectada - Siguiente subtítulo");
   handleSubtitleNavigation("next");
-  return true;
-});
-
-// Nueva tecla R para auto-repeat
-input.onKeyDown("r", (data) => {
-  console.log("Tecla R detectada - Auto-repeat toggle");
-  handleSubtitleNavigation("auto-repeat");
   return true;
 });
 
@@ -321,14 +249,6 @@ try {
       keyEquivalent: "d"
     });
     
-    menu.addItem({
-      title: "Auto-Repeat Subtítulo (Toggle)",
-      action: () => handleSubtitleNavigation("auto-repeat"),
-      key: "Ctrl+Shift+R",
-      keyModifier: ["ctrl", "shift"],
-      keyEquivalent: "r"
-    });
-    
     console.log("Items de menú registrados con éxito");
   }
 } catch (e) {
@@ -359,17 +279,11 @@ try {
     handleSubtitleNavigation("toggle");
   });
   
-  mpv.registerScriptMessageHandler("subtitle-auto-repeat", () => {
-    console.log("Comando MPV: subtitle-auto-repeat");
-    handleSubtitleNavigation("auto-repeat");
-  });
-  
   console.log("Comandos MPV registrados. Puedes mapearlos en IINA:");
   console.log("- script-message subtitle-previous");
   console.log("- script-message subtitle-repeat");
   console.log("- script-message subtitle-next");
   console.log("- script-message subtitle-toggle");
-  console.log("- script-message subtitle-auto-repeat");
   
 } catch (e) {
   console.log("Error registrando comandos MPV:", e.message);
@@ -379,10 +293,7 @@ try {
 event.on("mpv.file-loaded", () => {
   currentSubEnd = 0;
   lastSubText = "";
-  // Reset auto-repeat
-  autoRepeatMode = false;
-  repeatCount = 0;
-  originalSubText = "";
+  remainingPlays = 1;
   if (checkInterval) clearInterval(checkInterval);
   if (pollInterval) clearInterval(pollInterval);
   const sid = mpv.getNumber("sid");
@@ -390,19 +301,14 @@ event.on("mpv.file-loaded", () => {
   console.log(`Archivo cargado. SID: ${sid}, Vis: ${subVis ? 'yes' : 'no'}`);
   
   loadSettings(() => {
-    console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms, Offset=${timeOffset}s, AutoRep=${autoRepeatTimes}`);
+    console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms, Offset=${timeOffset}s, AutoRepeat=${autoRepeatEnabled ? 'Sí (' + repeatTimes + ' veces)' : 'No'}`);
     
     // Mostrar instrucciones detalladas
-    core.osd(`📺 Plugin de Subtítulos Activo
-    
-Intenta estas opciones:
-1) Teclas directas: P, A, S, D, R
-2) Con menú: Ctrl+Shift+P/A/S/D/R
-3) Configura en IINA Preferences:
-   - script-message subtitle-previous
-   - script-message subtitle-repeat
-   - script-message subtitle-next
-   - script-message subtitle-auto-repeat`);
+    let instructions = `📺 Plugin de Subtítulos Activo\n\nIntenta estas opciones:\n1) Teclas directas: P, A, S, D\n2) Con menú: Ctrl+Shift+P/A/S/D\n3) Configura en IINA Preferences:\n   - script-message subtitle-previous\n   - script-message subtitle-repeat\n   - script-message subtitle-next`;
+    if (autoRepeatEnabled) {
+      instructions += `\n\n🔄 Auto-repeat ACTIVADO (${repeatTimes} veces total por subtítulo)`;
+    }
+    core.osd(instructions);
     
     if (sid > 0) startPolling();
   });
@@ -418,7 +324,6 @@ setTimeout(() => {
           key.toLowerCase().includes('s') || 
           key.toLowerCase().includes('d') || 
           key.toLowerCase().includes('p') ||
-          key.toLowerCase().includes('r') ||
           key === '1' || key === '2' || key === '3') {
         console.log(`Tecla "${key}": ${JSON.stringify(bindings[key])}`);
       }
@@ -432,30 +337,31 @@ setTimeout(() => {
 // Inicializar
 loadSettings(() => {
   console.log("=================================");
-  console.log("Plugin de Subtítulos v2.1 Iniciado (con Auto-Repeat)");
+  console.log("Plugin de Subtítulos v2.0 Iniciado");
   console.log("=================================");
   console.log("MÉTODOS DE CONTROL DISPONIBLES:");
   console.log("");
   console.log("1. TECLAS DIRECTAS (si funcionan):");
   console.log("   P = Toggle plugin");
   console.log("   A = Anterior");
-  console.log("   S = Repetir (manual)");
+  console.log("   S = Repetir");
   console.log("   D = Siguiente");
-  console.log("   R = Auto-Repeat (toggle, x=" + autoRepeatTimes + " veces)");
   console.log("");
   console.log("2. ATAJOS DE MENÚ:");
   console.log("   Ctrl+Shift+P = Toggle");
   console.log("   Ctrl+Shift+A = Anterior");
   console.log("   Ctrl+Shift+S = Repetir");
   console.log("   Ctrl+Shift+D = Siguiente");
-  console.log("   Ctrl+Shift+R = Auto-Repeat");
   console.log("");
   console.log("3. COMANDOS MPV (configurar en IINA):");
   console.log("   script-message subtitle-previous");
   console.log("   script-message subtitle-repeat");
   console.log("   script-message subtitle-next");
   console.log("   script-message subtitle-toggle");
-  console.log("   script-message subtitle-auto-repeat");
+  if (autoRepeatEnabled) {
+    console.log("");
+    console.log(`🔄 Auto-repeat: ${repeatTimes} veces total por subtítulo`);
+  }
   console.log("=================================");
 });
 
@@ -470,7 +376,6 @@ event.on("iina.plugin-will-unload", () => {
     input.onKeyDown("a", null);
     input.onKeyDown("s", null);
     input.onKeyDown("d", null);
-    input.onKeyDown("r", null);
   } catch (e) {
     console.log("Error limpiando key handlers:", e.message);
   }
