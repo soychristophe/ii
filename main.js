@@ -95,7 +95,7 @@ function startPolling() {
   }, pollIntervalMs);
 }
 
-// Función helper para navegar subtítulos (ACTUALIZADA: usa sub-seek para mover video time)
+// Función helper para navegar subtítulos (ACTUALIZADA: usa sub-seek para mover video time y resume playback)
 function handleSubtitleNavigation(command) {
   const sid = mpv.getNumber("sid");
   if (sid <= 0) {
@@ -108,16 +108,19 @@ function handleSubtitleNavigation(command) {
       mpv.command("sub-seek", ["1"]);
       console.log("*** Avanzar: Siguiente subtítulo (seek video) ***");
       core.osd("⏭️ Siguiente subtítulo");
+      core.resume();
       break;
     case "repeat":
       mpv.command("sub-seek", ["0"]);
       console.log("*** Repetir: Seek a inicio subtítulo actual ***");
       core.osd("🔄 Repitiendo subtítulo actual");
+      core.resume();
       break;
     case "previous":
       mpv.command("sub-seek", ["-1"]);
       console.log("*** Retroceder: Subtítulo anterior (seek video) ***");
       core.osd("⏮️ Subtítulo anterior");
+      core.resume();
       break;
     case "toggle":
       pluginEnabled = !pluginEnabled;
