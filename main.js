@@ -70,7 +70,7 @@ function setupPauseBeforeNextSub() {
   }
 
   const overshoot = checkIntervalMs / 1000.0; // Predicción para próximo chequeo
-  console.log(`Configurando pausa/repeat: Fin ajustado=${adjustedEnd.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s, offset=${timeOffset}s, overshoot=${overshoot.toFixed(2)}s)`);
+  console.log(`Configurando pausa/repeat: Fin ajustado=${adjustedEnd.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s, offset=${timeOffset}s, overshoot=${overshoot.toFixed(2)}s, reps_quedan=${remainingPlays})`);
 
   checkInterval = setInterval(() => {
     const nowTime = mpv.getNumber("playback-time");
@@ -80,33 +80,46 @@ function setupPauseBeforeNextSub() {
     const currentSubText = mpv.getString("sub-text");
 
     if (Math.floor(nowTime * 10) % 5 === 0) {
-      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s, reps_quedan=${remainingPlays}`);
+      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s, reps_quedan=${remainingPlays}, sub_text_len=${currentSubText ? currentSubText.length : 0}`);
     }
 
     // Condición mejorada: Predice overshoot y verifica que sea el mismo sub
     const triggerThreshold = adjustedEnd - pauseMargin;
     const willOvershoot = (nowTime + overshoot >= triggerThreshold) && (nowTime < adjustedEnd + 0.5);
-    const isSameSub = currentSubText === lastSubText;
+    const isSameSub = currentSubText === lastSubText && currentSubText.trim() !== "";
 
     if (!isPaused && subVisibility && sid > 0 && willOvershoot && isSameSub) {
-      console.log(`*** Trigger detectado a ${nowTime.toFixed(2)}s (threshold=${triggerThreshold.toFixed(2)}s, mismo_sub=${isSameSub}) ***`);
+      console.log(`*** Trigger AUTO-REPEAT detectado a ${nowTime.toFixed(2)}s (threshold=${triggerThreshold.toFixed(2)}s, mismo_sub=${isSameSub}, autoRepeat=${autoRepeatEnabled}) ***`);
       
       if (autoRepeatEnabled && remainingPlays > 1) {
         const thisRepeatNum = repeatTimes - remainingPlays + 1;
-        console.log(`*** Repitiendo subtítulo ${thisRepeatNum}/${repeatTimes} a ${nowTime.toFixed(2)}s (quedan ${remainingPlays - 1} reps) ***`);
-        mpv.command("sub-seek", ["0"]);
+        console.log(`*** AUTO-REPEAT: Repitiendo subtítulo ${thisRepeatNum}/${repeatTimes} a ${nowTime.toFixed(2)}s (quedan ${remainingPlays - 1} reps) ***`);
+        
+        // FIX: Seek absoluto al sub-start para evitar pruning issues
+        const subStart = mpv.getNumber("sub-start");
+        mpv.command("seek", subStart, "absolute");
+        
         remainingPlays--;
-        core.resume(); // Asegurar play si por algún motivo pausó
+        core.resume(); // Asegurar play
+        core.osd(`🔄 Rep ${thisRepeatNum}/${repeatTimes}`);
+        
         clearInterval(checkInterval);
-        // Pequeño delay para que el seek se asiente
-        setTimeout(() => setupPauseBeforeNextSub(), 100);
+        // Delay para que MPV asiente el seek y sub props
+        setTimeout(() => {
+          // Re-verificar currentSubEnd post-seek
+          currentSubEnd = mpv.getNumber("sub-end");
+          console.log(`Post-seek: Nuevo sub-end=${currentSubEnd.toFixed(2)}s`);
+          setupPauseBeforeNextSub();
+        }, 150);
       } else if (autoRepeatEnabled && remainingPlays === 1) {
-        console.log(`*** Última reproducción completada a ${nowTime.toFixed(2)}s (${repeatTimes} reps totales). Continuando al siguiente... ***`);
+        console.log(`*** AUTO-REPEAT: Última rep completada a ${nowTime.toFixed(2)}s (${repeatTimes} totales). Continuando al siguiente... ***`);
+        core.osd(`✅ ${repeatTimes} reps hechas - Siguiente sub`);
         clearInterval(checkInterval);
-        // No pausar: dejar fluir al next sub
+        // No pausar: fluir naturally
       } else {
+        // Modo normal: Pausar
         core.pause();
-        console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
+        console.log(`*** PAUSADO MANUAL a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
         core.osd("⏸️ Pausa: Play para siguiente subtítulo");
         clearInterval(checkInterval);
       }
@@ -133,7 +146,7 @@ function startPolling() {
   }, pollIntervalMs);
 }
 
-// Función helper para navegar subtítulos (ACTUALIZADA: usa sub-seek para mover video time y resume playback)
+// Función helper para navegar subtítulos (usa seek absoluto para consistencia)
 function handleSubtitleNavigation(command) {
   const sid = mpv.getNumber("sid");
   if (sid <= 0) {
@@ -149,8 +162,9 @@ function handleSubtitleNavigation(command) {
       core.resume();
       break;
     case "repeat":
-      mpv.command("sub-seek", ["0"]);
-      console.log("*** Repetir: Seek a inicio subtítulo actual ***");
+      const subStart = mpv.getNumber("sub-start");
+      mpv.command("seek", subStart, "absolute");
+      console.log("*** Repetir MANUAL: Seek a inicio subtítulo actual (${subStart.toFixed(2)}s) ***");
       core.osd("🔄 Repitiendo subtítulo actual");
       core.resume();
       break;
@@ -314,10 +328,20 @@ event.on("mpv.file-loaded", () => {
   loadSettings(() => {
     console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms, Offset=${timeOffset}s, AutoRepeat=${autoRepeatEnabled ? 'Sí (' + repeatTimes + ' veces)' : 'No'}`);
     
+    // FIX PRUNING: Desactivar pruning si auto-repeat
+    if (autoRepeatEnabled) {
+      try {
+        mpv.setOption("sub-ass-prune-delay", "inf");
+        console.log("*** FIX ACTIVADO: sub-ass-prune-delay=inf para auto-repeat ***");
+      } catch (e) {
+        console.log("Error seteando prune-delay:", e.message);
+      }
+    }
+    
     // Mostrar instrucciones detalladas
     let instructions = `📺 Plugin de Subtítulos Activo\n\nIntenta estas opciones:\n1) Teclas directas: P, A, S, D\n2) Con menú: Ctrl+Shift+P/A/S/D\n3) Configura en IINA Preferences:\n   - script-message subtitle-previous\n   - script-message subtitle-repeat\n   - script-message subtitle-next`;
     if (autoRepeatEnabled) {
-      instructions += `\n\n🔄 Auto-repeat ACTIVADO (${repeatTimes} reps totales por subtítulo)`;
+      instructions += `\n\n🔄 Auto-repeat ACTIVADO (${repeatTimes} reps totales por subtítulo)\n💡 FIX: Pruning desactivado para reps suaves`;
     }
     instructions += `\n\n💡 Si no repite: Baja chequeo a 50ms o margen a 0.2s`;
     core.osd(instructions);
@@ -349,7 +373,7 @@ setTimeout(() => {
 // Inicializar
 loadSettings(() => {
   console.log("=================================");
-  console.log("Plugin de Subtítulos v1.1.8 Iniciado (Auto-Repeat Corregido)");
+  console.log("Plugin de Subtítulos v1.1.9 Iniciado (Fix: Pruning + Seek Absoluto)");
   console.log("=================================");
   console.log("MÉTODOS DE CONTROL DISPONIBLES:");
   console.log("");
@@ -372,7 +396,7 @@ loadSettings(() => {
   console.log("   script-message subtitle-toggle");
   if (autoRepeatEnabled) {
     console.log("");
-    console.log(`🔄 Auto-repeat: ${repeatTimes} reps totales por subtítulo (con predicción de timing)`);
+    console.log(`🔄 Auto-repeat: ${repeatTimes} reps totales por subtítulo (con fix pruning y seek absoluto)`);
   }
   console.log("=================================");
 });
