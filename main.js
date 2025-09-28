@@ -69,31 +69,41 @@ function setupPauseBeforeNextSub() {
     return;
   }
 
-  console.log(`Configurando pausa: Fin ajustado=${adjustedEnd.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s, offset=${timeOffset}s)`);
+  const overshoot = checkIntervalMs / 1000.0; // Predicción para próximo chequeo
+  console.log(`Configurando pausa/repeat: Fin ajustado=${adjustedEnd.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s, offset=${timeOffset}s, overshoot=${overshoot.toFixed(2)}s)`);
 
   checkInterval = setInterval(() => {
     const nowTime = mpv.getNumber("playback-time");
     const isPaused = mpv.getFlag("pause");
     const subVisibility = mpv.getFlag("sub-visibility");
     const sid = mpv.getNumber("sid");
+    const currentSubText = mpv.getString("sub-text");
 
     if (Math.floor(nowTime * 10) % 5 === 0) {
-      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s`);
+      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s, reps_quedan=${remainingPlays}`);
     }
 
-    if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
+    // Condición mejorada: Predice overshoot y verifica que sea el mismo sub
+    const triggerThreshold = adjustedEnd - pauseMargin;
+    const willOvershoot = (nowTime + overshoot >= triggerThreshold) && (nowTime < adjustedEnd + 0.5);
+    const isSameSub = currentSubText === lastSubText;
+
+    if (!isPaused && subVisibility && sid > 0 && willOvershoot && isSameSub) {
+      console.log(`*** Trigger detectado a ${nowTime.toFixed(2)}s (threshold=${triggerThreshold.toFixed(2)}s, mismo_sub=${isSameSub}) ***`);
+      
       if (autoRepeatEnabled && remainingPlays > 1) {
         const thisRepeatNum = repeatTimes - remainingPlays + 1;
         console.log(`*** Repitiendo subtítulo ${thisRepeatNum}/${repeatTimes} a ${nowTime.toFixed(2)}s (quedan ${remainingPlays - 1} reps) ***`);
         mpv.command("sub-seek", ["0"]);
         remainingPlays--;
-        core.resume();
+        core.resume(); // Asegurar play si por algún motivo pausó
         clearInterval(checkInterval);
-        setupPauseBeforeNextSub();
+        // Pequeño delay para que el seek se asiente
+        setTimeout(() => setupPauseBeforeNextSub(), 100);
       } else if (autoRepeatEnabled && remainingPlays === 1) {
         console.log(`*** Última reproducción completada a ${nowTime.toFixed(2)}s (${repeatTimes} reps totales). Continuando al siguiente... ***`);
         clearInterval(checkInterval);
-        // No pausar: dejar que continúe naturalmente
+        // No pausar: dejar fluir al next sub
       } else {
         core.pause();
         console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
@@ -113,7 +123,7 @@ function startPolling() {
       if (subText && subText.trim() !== "" && subText !== lastSubText) {
         lastSubText = subText;
         currentSubEnd = mpv.getNumber("sub-end");
-        console.log(`*** Nuevo sub por POLLING: fin=${currentSubEnd.toFixed(2)}s ***`);
+        console.log(`*** Nuevo sub por POLLING: fin=${currentSubEnd.toFixed(2)}s, texto="${subText.substring(0, 20)}..." ***`);
         if (pluginEnabled) {
           remainingPlays = autoRepeatEnabled ? repeatTimes : 1;
           setupPauseBeforeNextSub();
@@ -169,7 +179,7 @@ event.on("mpv.sub-start.changed", () => {
   if (sid > 0 && subText && subText.trim() !== "" && subText !== lastSubText) {
     currentSubEnd = mpv.getNumber("sub-end");
     lastSubText = subText;
-    console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s ***`);
+    console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s, texto="${subText.substring(0, 20)}..." ***`);
     if (pluginEnabled) {
       remainingPlays = autoRepeatEnabled ? repeatTimes : 1;
       setupPauseBeforeNextSub();
@@ -309,6 +319,7 @@ event.on("mpv.file-loaded", () => {
     if (autoRepeatEnabled) {
       instructions += `\n\n🔄 Auto-repeat ACTIVADO (${repeatTimes} reps totales por subtítulo)`;
     }
+    instructions += `\n\n💡 Si no repite: Baja chequeo a 50ms o margen a 0.2s`;
     core.osd(instructions);
     
     if (sid > 0) startPolling();
@@ -338,7 +349,7 @@ setTimeout(() => {
 // Inicializar
 loadSettings(() => {
   console.log("=================================");
-  console.log("Plugin de Subtítulos v1.1.7 Iniciado (con Auto-Repeat)");
+  console.log("Plugin de Subtítulos v1.1.8 Iniciado (Auto-Repeat Corregido)");
   console.log("=================================");
   console.log("MÉTODOS DE CONTROL DISPONIBLES:");
   console.log("");
@@ -361,7 +372,7 @@ loadSettings(() => {
   console.log("   script-message subtitle-toggle");
   if (autoRepeatEnabled) {
     console.log("");
-    console.log(`🔄 Auto-repeat: ${repeatTimes} reps totales por subtítulo (simula ${repeatTimes - 1} 'S' manuales)`);
+    console.log(`🔄 Auto-repeat: ${repeatTimes} reps totales por subtítulo (con predicción de timing)`);
   }
   console.log("=================================");
 });
