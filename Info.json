@@ -1,5 +1,5 @@
 {
-  "name": "Pausa-Subtítulos",
+  "name": "Subtitle Pause + AutoRepeat",
   "identifier": "com.soychristophe.pausabeforesub",
   "version": "1.1.6",
   "homepage": "",
@@ -27,6 +27,4 @@
     "pollIntervalMs": 200,
     "timeOffset": 0
 }
-
-
 }
