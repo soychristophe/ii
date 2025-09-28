@@ -8,7 +8,7 @@ let lastSubText = "";
 let pluginEnabled = true;
 
 // Defaults
-let pauseMargin = 0.5;
+let pauseMargin = 0.0;
 let checkIntervalMs = 100;
 let pollIntervalMs = 200;
 let timeOffset = 0;
@@ -24,7 +24,7 @@ function loadSettings(callback) {
   }
 
   preferences.get("pauseMargin", (value) => {
-    pauseMargin = parseFloat(value) || 0.5;
+    pauseMargin = parseFloat(value) || 0.0;
     checkLoaded();
   });
 
