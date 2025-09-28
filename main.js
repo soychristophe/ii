@@ -120,9 +120,10 @@ event.on("mpv.pause.changed", () => {
   }
 });
 
-// Evento: Teclas (C/N/Y) - Con fix para comandos
-event.on("mpv.key-press", (event) => {
-  console.log(`Tecla presionada: "${event.key}"`);
+
+// Evento: Teclas (C/N/Y/P)
+iina.input.on("keyDown", (ev) => {
+  console.log(`Tecla presionada: "${ev.key}" (code=${ev.keyCode})`);
 
   const sid = mpv.getNumber("sid");
   if (sid <= 0) {
@@ -130,32 +131,33 @@ event.on("mpv.key-press", (event) => {
     return;
   }
 
-  switch (event.key) {
+  switch (ev.key.toUpperCase()) {
     case "P":
       pluginEnabled = !pluginEnabled;
-      const status = pluginEnabled ? "ACTIVADO" : "DESACTIVADO";
+      const status = pluginEnabled ? "Plugin ACTIVADO" : "Plugin DESACTIVADO";
       console.log(`Plugin: ${status}`);
       core.osd(`Pausa-subs: ${status}`);
       if (!pluginEnabled && checkInterval) clearInterval(checkInterval);
       break;
-    case "Y": // Siguiente
+    case "D": // Siguiente
       mpv.command("sub_step", ["1"]);
       console.log("*** Avanzar: Siguiente subtítulo (Y) ***");
       core.osd("⏭️ Siguiente subtítulo");
       break;
-    case "N": // Repetir
+    case "S": // Repetir
       const subStart = mpv.getNumber("sub-start");
       mpv.command("seek", [subStart.toString(), "absolute"]);
       console.log(`*** Repetir: Seek a ${subStart.toFixed(2)}s (N) ***`);
       core.osd("🔄 Repitiendo subtítulo actual");
       break;
-    case "C": // Anterior
+    case "A": // Anterior
       mpv.command("sub_step", ["-1"]);
       console.log("*** Retroceder: Subtítulo anterior (C) ***");
       core.osd("⏮️ Subtítulo anterior");
       break;
   }
 });
+
 
 // Al cargar archivo
 event.on("mpv.file-loaded", () => {
