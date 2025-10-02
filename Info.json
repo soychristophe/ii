@@ -1,15 +1,15 @@
 {
   "name": "Pausa-Subtítulos",
   "identifier": "com.soychristophe.pausabeforesub",
-  "version": "1.3",
+  "version": "2",
   "ghRepo": "soychristophe/iina-plugin-create-by-Grok-X-auto-pause-subttitle",
-  "ghVersion": 1.3,
+  "ghVersion": 2,
   "homepage": "https://github.com/soychristophe/iina-plugin-create-by-Grok-X-auto-pause-subttitle",
   "author": {
     "name": "Christophe Gomez de la Red"
   },
   "entry": "main.js",
-  "minAPIVersion": "1.0",
+  "minAPIVersion": "2.0",
   "description": "Plugin que pausa automáticamente el video antes de que aparezca el siguiente subtítulo, permitiendo leer con calma. Incluye navegación por subtítulos con teclas A/S/D.",
   "permissions": [
     "show-osd", 
