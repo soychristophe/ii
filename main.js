@@ -133,7 +133,7 @@ function setupPauseBeforeNextSub() {
           core.osd(`🔄 Repitiendo ${currentRepeatCount}/${autoRepeatTimes}`);
           isAutoRepeating = true;
           setTimeout(() => {
-            mpv.command("seek", currentSubStart, "absolute");
+            mpv.command("seek", [currentSubStart.toString(), "absolute"]);
           }, 100);
         } else {
           // Ya se completaron todas las repeticiones - avanzar al siguiente
@@ -164,6 +164,7 @@ function startPolling() {
       if (subText && subText.trim() !== "" && subText !== lastSubText) {
         lastSubText = subText;
         currentSubEnd = mpv.getNumber("sub-end");
+        currentSubStart = mpv.getNumber("sub-start");
         
         // Si no estamos en modo auto-repetición, es un subtítulo nuevo - resetear contador
         if (!isAutoRepeating) {
@@ -201,7 +202,7 @@ function handleSubtitleNavigation(command) {
       break;
     case "repeat":
       const subStartNow = mpv.getNumber("sub-start");
-      mpv.command("seek", subStartNow, "absolute");
+      mpv.command("seek", [subStartNow.toString(), "absolute"]);
       console.log("*** Repetir: Seek a inicio subtítulo actual ***");
       core.osd("🔄 Repitiendo subtítulo actual");
       core.resume();
