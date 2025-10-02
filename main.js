@@ -103,11 +103,15 @@ function setupPauseBeforeNextSub() {
     const sid = mpv.getNumber("sid");
 
     if (Math.floor(nowTime * 10) % 5 === 0) {
-      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s`);
+      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s, autoRepeat=${autoRepeatEnabled}`);
     }
 
     if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
       clearInterval(checkInterval);
+      
+      console.log(`=== FIN DE SUBTÍTULO DETECTADO ===`);
+      console.log(`Auto-repetición: ${autoRepeatEnabled ? 'ACTIVADA' : 'DESACTIVADA'}`);
+      console.log(`Contador actual: ${currentRepeatCount}/${autoRepeatTimes}`);
       
       // Si auto-repetición está activada, NO pausar - repetir automáticamente
       if (autoRepeatEnabled) {
@@ -216,6 +220,17 @@ function handleSubtitleNavigation(command) {
       core.osd(`Auto-repetición: ${arStatus}\nRepeticiones: ${autoRepeatTimes}`);
       currentRepeatCount = 0;
       break;
+    case "status":
+      const pluginStatus = pluginEnabled ? "ON" : "OFF";
+      const autoRepeatStatus = autoRepeatEnabled ? "ON" : "OFF";
+      console.log(`=== ESTADO DEL PLUGIN ===`);
+      console.log(`Plugin: ${pluginStatus}`);
+      console.log(`Auto-repetición: ${autoRepeatStatus}`);
+      console.log(`Repeticiones configuradas: ${autoRepeatTimes}`);
+      console.log(`Contador actual: ${currentRepeatCount}`);
+      console.log(`========================`);
+      core.osd(`Plugin: ${pluginStatus}\nAuto-rep: ${autoRepeatStatus} (${autoRepeatTimes}x)\nContador: ${currentRepeatCount}`);
+      break;
   }
 }
 
@@ -229,13 +244,14 @@ event.on("mpv.sub-start.changed", () => {
     currentSubEnd = mpv.getNumber("sub-end");
     lastSubText = subText;
     
-    // Si no estamos en modo auto-repetición, resetear el contador
+    // Si no estamos en modo auto-repetición, es un subtítulo nuevo - resetear contador
     if (!isAutoRepeating) {
       currentRepeatCount = 0;
-      console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s (contador reset) ***`);
+      console.log(`*** Nuevo subtítulo por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s (contador reset a 0) ***`);
     } else {
+      // Es una repetición del mismo subtítulo - mantener contador
       isAutoRepeating = false;
-      console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s (después de repetición) ***`);
+      console.log(`*** Repetición detectada por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s (contador en ${currentRepeatCount}) ***`);
     }
     
     if (pluginEnabled) {
@@ -284,6 +300,13 @@ input.onKeyDown("r", () => {
   return true;
 });
 
+// Nueva tecla I para ver el estado
+input.onKeyDown("i", () => {
+  console.log("Tecla I detectada - Mostrar estado");
+  handleSubtitleNavigation("status");
+  return true;
+});
+
 // Registrar comandos MPV
 try {
   mpv.registerScriptMessageHandler("subtitle-previous", () => {
@@ -309,6 +332,11 @@ try {
   mpv.registerScriptMessageHandler("subtitle-toggle-autorepeat", () => {
     console.log("Comando MPV: subtitle-toggle-autorepeat");
     handleSubtitleNavigation("toggle-autorepeat");
+  });
+
+  mpv.registerScriptMessageHandler("subtitle-status", () => {
+    console.log("Comando MPV: subtitle-status");
+    handleSubtitleNavigation("status");
   });
   
   console.log("Comandos MPV registrados correctamente");
