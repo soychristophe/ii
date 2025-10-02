@@ -60,8 +60,15 @@ function loadSettings(callback) {
   });
 
   preferences.get("autoRepeatEnabled", (value) => {
+    console.log(`Cargando autoRepeatEnabled: valor="${value}", tipo=${typeof value}`);
     if (value !== undefined && value !== null) {
-      autoRepeatEnabled = (value === true || value === "true");
+      // IINA puede devolver string "true"/"false" o boolean true/false
+      if (typeof value === 'string') {
+        autoRepeatEnabled = (value === "true" || value === "1");
+      } else {
+        autoRepeatEnabled = Boolean(value);
+      }
+      console.log(`autoRepeatEnabled establecido a: ${autoRepeatEnabled}`);
     }
     checkLoaded();
   });
@@ -364,7 +371,7 @@ event.on("mpv.file-loaded", () => {
     console.log(`  - Chequeo: ${checkIntervalMs}ms`);
     console.log(`  - Polling: ${pollIntervalMs}ms`);
     console.log(`  - Offset: ${timeOffset}s`);
-    console.log(`  - Auto-repetición: ${autoRepeatEnabled ? 'ON' : 'OFF'}`);
+    console.log(`  - Auto-repetición: ${autoRepeatEnabled} (tipo: ${typeof autoRepeatEnabled})`);
     console.log(`  - Repeticiones: ${autoRepeatTimes}`);
     
     core.osd(`📺 Plugin de Subtítulos Activo
@@ -373,6 +380,7 @@ Controles:
 • P = Toggle plugin
 • A/S/D = Anterior/Repetir/Siguiente
 • R = Toggle Auto-repetición
+• I = Ver estado
 
 Auto-repetición: ${autoRepeatEnabled ? '✅ ON' : '❌ OFF'} (${autoRepeatTimes}x)`);
     
