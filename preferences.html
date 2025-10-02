@@ -28,5 +28,19 @@
     <input type="number" data-pref-key="timeOffset" data-type="float" min="-1.0" max="1.0" step="0.1" value="0" />
     <p class="small secondary pref-help">Ajuste para desfases (negativo si pausa antes, positivo si después).</p>
   </div>
+
+  <div class="pref-section">
+    <label>
+      <input type="checkbox" data-pref-key="autoRepeatEnabled" data-type="bool" value="false" />
+      Activar Auto-Repetición
+    </label>
+    <p class="small secondary pref-help">Repite automáticamente cada subtítulo el número de veces especificado.</p>
+  </div>
+
+  <div class="pref-section">
+    <label>Número de repeticiones:</label>
+    <input type="number" data-pref-key="autoRepeatTimes" data-type="int" min="1" max="10" step="1" value="2" />
+    <p class="small secondary pref-help">Cuántas veces repetir cada subtítulo (mínimo 1, máximo 10).</p>
+  </div>
 </body>
 </html>

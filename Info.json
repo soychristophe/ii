@@ -1,9 +1,9 @@
 {
   "name": "Pausa-Subtítulos",
   "identifier": "com.soychristophe.pausabeforesub",
-  "version": "1.2.0",
+  "version": "1.3",
   "ghRepo": "soychristophe/iina-plugin-create-by-Grok-X-auto-pause-subttitle",
-  "ghVersion": 2,
+  "ghVersion": 1.3,
   "homepage": "https://github.com/soychristophe/iina-plugin-create-by-Grok-X-auto-pause-subttitle",
   "author": {
     "name": "Christophe Gomez de la Red"
