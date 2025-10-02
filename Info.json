@@ -1,16 +1,15 @@
 {
   "name": "Pausa-Subtítulos",
   "identifier": "com.soychristophe.pausabeforesub",
-  "ghRepo": "soychristophe/iina-plugin-create-by-Grok-X-auto-pause-subttitle",
-  "ghVersion": "1.1.8",
-  "version": "1.1.8",
+  "version": "1.1.6",
   "homepage": "",
   "author": {
     "name": "Christophe Gomez de la Red"
   },
+
   "entry": "main.js",
   "minAPIVersion": "1.0",
-  "description": "Pausa automáticamente antes del siguiente subtítulo. Incluye auto-repeat para reproducir subtítulos múltiples veces antes de continuar.",
+  "description": "An n nested .",
   "permissions": [
     "show-osd", 
     "show-alert", 
@@ -26,8 +25,8 @@
     "pauseMargin": 0.0,
     "checkIntervalMs": 100,
     "pollIntervalMs": 200,
-    "timeOffset": 0,
-    "autoRepeat": false,
-    "repeatTimes": 5
-  }
+    "timeOffset": 0
+}
+
+
 }

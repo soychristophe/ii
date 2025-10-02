@@ -1,250 +1,355 @@
 const { console, core, event, mpv, preferences, input, menu } = iina;
 
-// --- Variables Globales ---
+// Variables
 let checkInterval = null;
-let currentSubStart = 0;
+let pollInterval = null;
 let currentSubEnd = 0;
 let lastSubText = "";
 let pluginEnabled = true;
-let remainingPlays = 1;
 
-// --- Configuración (cargada desde preferencias) ---
+// Defaults
 let pauseMargin = 0.0;
 let checkIntervalMs = 100;
 let pollIntervalMs = 200;
 let timeOffset = 0;
-let autoRepeatEnabled = false;
-let repeatTimes = 5;
 
-// --- Carga de Configuración ---
+// Cargar settings ASÍNCRONAMENTE
 function loadSettings(callback) {
   let loaded = 0;
-  const total = 6;
-  const settings = ["pauseMargin", "checkIntervalMs", "pollIntervalMs", "timeOffset", "autoRepeat", "repeatTimes"];
-  
-  settings.forEach(key => {
-    preferences.get(key, (value) => {
-      if (key === "autoRepeat") {
-        autoRepeatEnabled = value === true || value === "true";
-      } else {
-        // Asegura que los valores numéricos sean del tipo correcto
-        window[key] = (key.includes("Ms")) ? parseInt(value) || 100 : parseFloat(value) || 0;
-      }
-      if (++loaded === total && callback) callback();
-    });
+  const total = 4;
+
+  function checkLoaded() {
+    loaded++;
+    if (loaded === total && callback) callback();
+  }
+
+  preferences.get("pauseMargin", (value) => {
+    pauseMargin = parseFloat(value) || 0.0;
+    checkLoaded();
+  });
+
+  preferences.get("checkIntervalMs", (value) => {
+    checkIntervalMs = parseInt(value) || 100;
+    checkLoaded();
+  });
+
+  preferences.get("pollIntervalMs", (value) => {
+    pollIntervalMs = parseInt(value) || 200;
+    checkLoaded();
+  });
+
+  preferences.get("timeOffset", (value) => {
+    timeOffset = parseFloat(value) || 0;
+    checkLoaded();
   });
 }
 
-/**
- * Se llama cuando se detecta un nuevo subtítulo.
- * Esta función centraliza el reinicio del estado.
- */
-function onNewSubtitleDetected(subStart, subEnd, subText) {
-  // Limpiar cualquier intervalo anterior
+// Función para configurar pausa cerca del final del subtítulo actual
+function setupPauseBeforeNextSub() {
   if (checkInterval) clearInterval(checkInterval);
 
-  currentSubStart = subStart;
-  currentSubEnd = subEnd;
-  lastSubText = subText;
-
-  console.log(`*** NUEVO SUBTÍTULO ***: Inicio=${currentSubStart.toFixed(2)}s, Fin=${currentSubEnd.toFixed(2)}s, Texto="${subText.substring(0, 30)}..."`);
-
-  if (pluginEnabled) {
-    // Reiniciar el contador de repeticiones para el nuevo subtítulo
-    remainingPlays = autoRepeatEnabled ? repeatTimes : 1;
-    console.log(`Reiniciando reps. Restantes: ${remainingPlays}`);
-    setupSubtitleTimer();
+  const currentTime = mpv.getNumber("playback-time");
+  const adjustedEnd = currentSubEnd + timeOffset;
+  
+  if (currentTime > adjustedEnd) {
+    console.log(`Sub ya terminó (tiempo=${currentTime.toFixed(2)}s > fin=${adjustedEnd.toFixed(2)}s). Esperando nuevo.`);
+    return;
   }
-}
 
-/**
- * Configura el temporizador que espera el momento de pausar o repetir.
- */
-function setupSubtitleTimer() {
-  if (checkInterval) clearInterval(checkInterval);
-
-  // Si el tiempo de fin es inválido, no hacer nada
-  if (currentSubEnd <= 0) return;
-
-  const adjustedEndTime = currentSubEnd + timeOffset;
-  const triggerTime = adjustedEndTime - pauseMargin;
-
-  console.log(`Configurando temporizador. Trigger en: ${triggerTime.toFixed(2)}s. Fin ajustado: ${adjustedEndTime.toFixed(2)}s.`);
+  console.log(`Configurando pausa: Fin ajustado=${adjustedEnd.toFixed(2)}s (desde ${currentTime.toFixed(2)}s, margen=${pauseMargin}s, offset=${timeOffset}s)`);
 
   checkInterval = setInterval(() => {
-    const currentTime = mpv.getNumber("playback-time");
+    const nowTime = mpv.getNumber("playback-time");
     const isPaused = mpv.getFlag("pause");
+    const subVisibility = mpv.getFlag("sub-visibility");
+    const sid = mpv.getNumber("sid");
 
-    // Salir si el video está pausado o no hay subtítulos visibles
-    if (isPaused || !mpv.getFlag("sub-visibility") || mpv.getNumber("sid") <= 0) {
-      return;
+    if (Math.floor(nowTime * 10) % 5 === 0) {
+      console.log(`Chequeo: t=${nowTime.toFixed(2)}s, p=${isPaused}, fin_ajustado=${adjustedEnd.toFixed(2)}s`);
     }
 
-    // Condición principal: ¿hemos llegado al momento de actuar?
-    if (currentTime >= triggerTime) {
-      console.log(`*** TRIGGER ACTIVADO a ${currentTime.toFixed(2)}s (Trigger: ${triggerTime.toFixed(2)}s) ***`);
-      
-      // Detener este intervalo inmediatamente
+    if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
+      core.pause();
+      console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
+      core.osd("⏸️ Pausa: Play para siguiente subtítulo");
       clearInterval(checkInterval);
-      checkInterval = null;
-
-      if (autoRepeatEnabled && remainingPlays > 1) {
-        handleRepeat();
-      } else {
-        handlePause();
-      }
     }
   }, checkIntervalMs);
 }
 
-/**
- * Maneja la lógica de repetición.
- */
-function handleRepeat() {
-  remainingPlays--;
-  const currentRepeat = repeatTimes - remainingPlays;
-  console.log(`*** AUTO-REPEAT: Repetición ${currentRepeat}/${repeatTimes}. Volviendo a ${currentSubStart.toFixed(2)}s ***`);
-  
-  core.osd(`🔄 Rep ${currentRepeat}/${repeatTimes}`);
-  
-  // Usar seek absoluto para máxima fiabilidad
-  mpv.command("seek", [currentSubStart, "absolute"]);
-  core.resume();
+// Polling de respaldo para detectar cambios en sub-text
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(() => {
+    setTimeout(() => {
+      const subText = mpv.getString("sub-text");
+      if (subText && subText.trim() !== "" && subText !== lastSubText) {
+        lastSubText = subText;
+        currentSubEnd = mpv.getNumber("sub-end");
+        console.log(`*** Nuevo sub por POLLING: fin=${currentSubEnd.toFixed(2)}s ***`);
+        if (pluginEnabled) {
+          setupPauseBeforeNextSub();
+        }
+      }
+    }, 50);
+  }, pollIntervalMs);
+}
 
-  // Dar tiempo a MPV para procesar el seek antes de reconfigurar el temporizador
-  setTimeout(() => {
-    // Después de seek, reconfirmar el tiempo de fin por si acaso
+// Función helper para navegar subtítulos (ACTUALIZADA: usa sub-seek para mover video time y resume playback)
+function handleSubtitleNavigation(command) {
+  const sid = mpv.getNumber("sid");
+  if (sid <= 0) {
+    core.osd("❌ No hay subtítulos activos para navegar", "warning");
+    return;
+  }
+  
+  switch(command) {
+    case "next":
+      mpv.command("sub-seek", ["1"]);
+      console.log("*** Avanzar: Siguiente subtítulo (seek video) ***");
+      core.osd("⏭️ Siguiente subtítulo");
+      core.resume();
+      break;
+    case "repeat":
+      mpv.command("sub-seek", ["0"]);
+      console.log("*** Repetir: Seek a inicio subtítulo actual ***");
+      core.osd("🔄 Repitiendo subtítulo actual");
+      core.resume();
+      break;
+    case "previous":
+      mpv.command("sub-seek", ["-1"]);
+      console.log("*** Retroceder: Subtítulo anterior (seek video) ***");
+      core.osd("⏮️ Subtítulo anterior");
+      core.resume();
+      break;
+    case "toggle":
+      pluginEnabled = !pluginEnabled;
+      const status = pluginEnabled ? "ACTIVADO ✅" : "DESACTIVADO ❌";
+      console.log(`Plugin: ${status}`);
+      core.osd(`Pausa-subs: ${status}`);
+      if (!pluginEnabled && checkInterval) clearInterval(checkInterval);
+      break;
+  }
+}
+
+// Evento: Inicio de nuevo subtítulo
+event.on("mpv.sub-start.changed", () => {
+  const subStart = mpv.getNumber("sub-start");
+  const subText = mpv.getString("sub-text");
+  const sid = mpv.getNumber("sid");
+  
+  if (sid > 0 && subText && subText.trim() !== "") {
     currentSubEnd = mpv.getNumber("sub-end");
-    console.log(`Post-seek: Nuevo fin confirmado=${currentSubEnd.toFixed(2)}s. Restantes=${remainingPlays}.`);
-    setupSubtitleTimer();
-  }, 150); // 150ms es un buen punto de partida
-}
-
-/**
- * Maneja la lógica de pausa.
- */
-function handlePause() {
-  console.log(`*** PAUSANDO en el final del subtítulo. ***`);
-  core.pause();
-  core.osd("⏸️ Pausado. Presiona Play para continuar.");
-}
-
-// --- Eventos y Control de Usuario ---
-
-// Detectar nuevos subtítulos a través del evento de cambio de propiedad
-event.on("mpv.property-changed", (data) => {
-  if (data.name === "sub-start") {
-    const subText = mpv.getString("sub-text");
-    // Solo actuar si el texto es nuevo y no está vacío
-    if (subText && subText.trim() !== "" && subText !== lastSubText) {
-      const subStart = mpv.getNumber("sub-start");
-      const subEnd = mpv.getNumber("sub-end");
-      onNewSubtitleDetected(subStart, subEnd, subText);
+    lastSubText = subText;
+    console.log(`*** Nuevo sub por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s ***`);
+    if (pluginEnabled) {
+      setupPauseBeforeNextSub();
     }
   }
 });
 
-// Polling como respaldo para cuando el evento no se dispara (poco común)
-function startPolling() {
-  if (pollInterval) clearInterval(pollInterval);
-  pollInterval = setInterval(() => {
-    const subText = mpv.getString("sub-text");
-    if (subText && subText.trim() !== "" && subText !== lastSubText) {
-      const subStart = mpv.getNumber("sub-start");
-      const subEnd = mpv.getNumber("sub-end");
-      onNewSubtitleDetected(subStart, subEnd, subText);
-    }
-  }, pollIntervalMs);
-}
-
-// Función helper para navegación de subtítulos
-function handleSubtitleNavigation(command) {
-  if (mpv.getNumber("sid") <= 0) {
-    core.osd("❌ No hay subtítulos activos", "warning");
-    return;
+// Evento: Play manual
+event.on("mpv.pause.changed", () => {
+  const isPaused = mpv.getFlag("pause");
+  if (!isPaused) {
+    console.log("*** Play manual: Reiniciando polling. ***");
+    startPolling();
   }
-  
-  // Limpiar cualquier temporizador activo al navegar manualmente
-  if (checkInterval) clearInterval(checkInterval);
+});
 
-  switch(command) {
-    case "next":
-      mpv.command("sub-seek", ["1"]);
-      core.osd("⏭️ Siguiente");
-      break;
-    case "repeat":
-      // La repetición manual ahora también usa seek absoluto
-      mpv.command("seek", [currentSubStart, "absolute"]);
-      core.osd("🔄 Repitiendo");
-      break;
-    case "previous":
-      mpv.command("sub-seek", ["-1"]);
-      core.osd("⏮️ Anterior");
-      break;
-    case "toggle":
-      pluginEnabled = !pluginEnabled;
-      core.osd(`Plugin: ${pluginEnabled ? 'ACTIVADO ✅' : 'DESACTIVADO ❌'}`);
-      if (!pluginEnabled && checkInterval) clearInterval(checkInterval);
-      break;
-  }
-  core.resume();
-}
+// Registrar tecla P para toggle
+input.onKeyDown("p", (data) => {
+  console.log("Tecla P detectada - Toggle plugin");
+  handleSubtitleNavigation("toggle");
+  return true; // Indica que manejamos el evento
+});
 
-// --- Registro de Teclas y Menús ---
-input.onKeyDown("p", () => { handleSubtitleNavigation("toggle"); return true; });
-input.onKeyDown("a", () => { handleSubtitleNavigation("previous"); return true; });
-input.onKeyDown("s", () => { handleSubtitleNavigation("repeat"); return true; });
-input.onKeyDown("d", () => { handleSubtitleNavigation("next"); return true; });
+// Registrar teclas A, S, D
+input.onKeyDown("a", (data) => {
+  console.log("Tecla A detectada - Subtítulo anterior");
+  handleSubtitleNavigation("previous");
+  return true;
+});
 
-// ... (El código de registro de menú y comandos MPV puede permanecer igual) ...
+input.onKeyDown("s", (data) => {
+  console.log("Tecla S detectada - Repetir subtítulo");
+  handleSubtitleNavigation("repeat");
+  return true;
+});
+
+input.onKeyDown("d", (data) => {
+  console.log("Tecla D detectada - Siguiente subtítulo");
+  handleSubtitleNavigation("next");
+  return true;
+});
+
+// MÉTODO 2: Si lo anterior no funciona, intentar con el menú API
+// Usar el módulo menu para registrar comandos con atajos
 try {
   if (menu && menu.addItem) {
-    menu.addItem({ title: "Plugin: Toggle On/Off", action: () => handleSubtitleNavigation("toggle") });
-    menu.addItem({ title: "Subtítulo Anterior", action: () => handleSubtitleNavigation("previous") });
-    menu.addItem({ title: "Repetir Subtítulo", action: () => handleSubtitleNavigation("repeat") });
-    menu.addItem({ title: "Siguiente Subtítulo", action: () => handleSubtitleNavigation("next") });
+    console.log("Intentando registrar items de menú con atajos...");
+    
+    menu.addItem({
+      title: "Plugin: Toggle On/Off",
+      action: () => handleSubtitleNavigation("toggle"),
+      key: "Ctrl+Shift+P",
+      keyModifier: ["ctrl", "shift"],
+      keyEquivalent: "p"
+    });
+    
+    menu.addItem({
+      title: "Subtítulo Anterior",
+      action: () => handleSubtitleNavigation("previous"),
+      key: "Ctrl+Shift+A",
+      keyModifier: ["ctrl", "shift"],
+      keyEquivalent: "a"
+    });
+    
+    menu.addItem({
+      title: "Repetir Subtítulo",
+      action: () => handleSubtitleNavigation("repeat"),
+      key: "Ctrl+Shift+S",
+      keyModifier: ["ctrl", "shift"],
+      keyEquivalent: "s"
+    });
+    
+    menu.addItem({
+      title: "Siguiente Subtítulo",
+      action: () => handleSubtitleNavigation("next"),
+      key: "Ctrl+Shift+D",
+      keyModifier: ["ctrl", "shift"],
+      keyEquivalent: "d"
+    });
+    
+    console.log("Items de menú registrados con éxito");
   }
-} catch (e) { console.log("Error menú:", e.message); }
+} catch (e) {
+  console.log("No se pudieron registrar items de menú:", e.message);
+}
 
+// MÉTODO 3: Usar comandos MPV personalizados
+// Registrar comandos personalizados que puedan ser mapeados en IINA
 try {
-  mpv.registerScriptMessageHandler("subtitle-previous", () => handleSubtitleNavigation("previous"));
-  mpv.registerScriptMessageHandler("subtitle-repeat", () => handleSubtitleNavigation("repeat"));
-  mpv.registerScriptMessageHandler("subtitle-next", () => handleSubtitleNavigation("next"));
-  mpv.registerScriptMessageHandler("subtitle-toggle", () => handleSubtitleNavigation("toggle"));
-} catch (e) { console.log("Error comandos MPV:", e.message); }
+  // Registrar comandos script-message que pueden ser vinculados en IINA
+  mpv.registerScriptMessageHandler("subtitle-previous", () => {
+    console.log("Comando MPV: subtitle-previous");
+    handleSubtitleNavigation("previous");
+  });
+  
+  mpv.registerScriptMessageHandler("subtitle-repeat", () => {
+    console.log("Comando MPV: subtitle-repeat");
+    handleSubtitleNavigation("repeat");
+  });
+  
+  mpv.registerScriptMessageHandler("subtitle-next", () => {
+    console.log("Comando MPV: subtitle-next");
+    handleSubtitleNavigation("next");
+  });
+  
+  mpv.registerScriptMessageHandler("subtitle-toggle", () => {
+    console.log("Comando MPV: subtitle-toggle");
+    handleSubtitleNavigation("toggle");
+  });
+  
+  console.log("Comandos MPV registrados. Puedes mapearlos en IINA:");
+  console.log("- script-message subtitle-previous");
+  console.log("- script-message subtitle-repeat");
+  console.log("- script-message subtitle-next");
+  console.log("- script-message subtitle-toggle");
+  
+} catch (e) {
+  console.log("Error registrando comandos MPV:", e.message);
+}
 
-
-// --- Inicialización ---
+// Al cargar archivo
 event.on("mpv.file-loaded", () => {
-  // Resetear estado
-  if (checkInterval) clearInterval(checkInterval);
-  if (pollInterval) clearInterval(pollInterval);
-  currentSubStart = 0;
   currentSubEnd = 0;
   lastSubText = "";
-  remainingPlays = 1;
-
+  if (checkInterval) clearInterval(checkInterval);
+  if (pollInterval) clearInterval(pollInterval);
+  const sid = mpv.getNumber("sid");
+  const subVis = mpv.getFlag("sub-visibility");
+  console.log(`Archivo cargado. SID: ${sid}, Vis: ${subVis ? 'yes' : 'no'}`);
+  
   loadSettings(() => {
-    console.log(`Settings cargados. AutoRepeat: ${autoRepeatEnabled} (${repeatTimes} veces)`);
+    console.log(`Settings: Margen=${pauseMargin}s, Chequeo=${checkIntervalMs}ms, Polling=${pollIntervalMs}ms, Offset=${timeOffset}s`);
     
-    if (autoRepeatEnabled) {
-      try {
-        mpv.setOption("sub-ass-prune-delay", "inf");
-        console.log("PRUNING OFF: sub-ass-prune-delay=inf");
-      } catch (e) { console.log("Error prune-delay:", e.message); }
-    }
+    // Mostrar instrucciones detalladas
+    core.osd(`📺 Plugin de Subtítulos Activo
     
-    core.osd(`📺 Plugin Activo. Auto-repeat: ${autoRepeatEnabled ? 'ON' : 'OFF'}`);
+Intenta estas opciones:
+1) Teclas directas: P, A, S, D
+2) Con menú: Ctrl+Shift+P/A/S/D
+3) Configura en IINA Preferences:
+   - script-message subtitle-previous
+   - script-message subtitle-repeat
+   - script-message subtitle-next`);
     
-    if (mpv.getNumber("sid") > 0) {
-      startPolling();
-    }
+    if (sid > 0) startPolling();
   });
+});
+
+// Debug: Mostrar todas las teclas registradas
+setTimeout(() => {
+  try {
+    const bindings = input.getAllKeyBindings();
+    console.log("=== TECLAS YA REGISTRADAS EN IINA ===");
+    Object.keys(bindings).forEach(key => {
+      if (key.toLowerCase().includes('a') || 
+          key.toLowerCase().includes('s') || 
+          key.toLowerCase().includes('d') || 
+          key.toLowerCase().includes('p') ||
+          key === '1' || key === '2' || key === '3') {
+        console.log(`Tecla "${key}": ${JSON.stringify(bindings[key])}`);
+      }
+    });
+    console.log("=====================================");
+  } catch (e) {
+    console.log("No se pudo obtener key bindings:", e.message);
+  }
+}, 1000);
+
+// Inicializar
+loadSettings(() => {
+  console.log("=================================");
+  console.log("Plugin de Subtítulos v2.0 Iniciado");
+  console.log("=================================");
+  console.log("MÉTODOS DE CONTROL DISPONIBLES:");
+  console.log("");
+  console.log("1. TECLAS DIRECTAS (si funcionan):");
+  console.log("   P = Toggle plugin");
+  console.log("   A = Anterior");
+  console.log("   S = Repetir");
+  console.log("   D = Siguiente");
+  console.log("");
+  console.log("2. ATAJOS DE MENÚ:");
+  console.log("   Ctrl+Shift+P = Toggle");
+  console.log("   Ctrl+Shift+A = Anterior");
+  console.log("   Ctrl+Shift+S = Repetir");
+  console.log("   Ctrl+Shift+D = Siguiente");
+  console.log("");
+  console.log("3. COMANDOS MPV (configurar en IINA):");
+  console.log("   script-message subtitle-previous");
+  console.log("   script-message subtitle-repeat");
+  console.log("   script-message subtitle-next");
+  console.log("   script-message subtitle-toggle");
+  console.log("=================================");
 });
 
 // Limpieza al descargar el plugin
 event.on("iina.plugin-will-unload", () => {
   if (checkInterval) clearInterval(checkInterval);
   if (pollInterval) clearInterval(pollInterval);
+  
+  // Limpiar handlers
+  try {
+    input.onKeyDown("p", null);
+    input.onKeyDown("a", null);
+    input.onKeyDown("s", null);
+    input.onKeyDown("d", null);
+  } catch (e) {
+    console.log("Error limpiando key handlers:", e.message);
+  }
+  
   console.log("Plugin descargado.");
 });

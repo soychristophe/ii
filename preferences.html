@@ -1,58 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Pausa-Subtítulos Preferences</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 20px; }
-    .section { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-    label { display: block; margin-bottom: 5px; font-weight: bold; }
-    input[type="number"], input[type="checkbox"] { margin-left: 10px; }
-    .description { font-size: 0.9em; color: #666; margin-top: 5px; }
-  </style>
+  <meta charset="utf-8">
+  <title>Configuración: Pausa Antes de Subtítulo</title>
 </head>
 <body>
-  <h1>Pausa-Subtítulos Settings</h1>
+  <div class="pref-section">
+    <label>Margen de pausa (segundos):</label>
+    <input type="number" data-pref-key="pauseMargin" data-type="float" min="-5.0" max="5.0" step="0.1" value="0.0" />
+    <p class="small secondary pref-help">Cuántos segundos antes del fin pausar.</p>
+  </div>
   
-  <div class="section">
-    <label>
-      <input type="checkbox" id="autoRepeat"> Auto-repeat subtítulos
-    </label>
-    <div class="description">Activa la repetición automática de cada subtítulo antes de continuar.</div>
-    
-    <label>
-      Número de repeticiones (total por subtítulo): 
-      <input type="number" id="repeatTimes" min="1" max="10" value="5">
-    </label>
-    <div class="description">Cuántas veces reproducir cada subtítulo en total (ej. 5 = 1 original + 4 repeticiones).</div>
+  <div class="pref-section">
+    <label>Intervalo de chequeo (ms):</label>
+    <input type="number" data-pref-key="checkIntervalMs" data-type="int" min="50" max="500" step="50" value="100" />
+    <p class="small secondary pref-help">Frecuencia durante el subtítulo (menor = más preciso).</p>
+  </div>
+  
+  <div class="pref-section">
+    <label>Intervalo de polling (ms):</label>
+    <input type="number" data-pref-key="pollIntervalMs" data-type="int" min="100" max="1000" step="50" value="200" />
+    <p class="small secondary pref-help">Frecuencia para detectar nuevos subtítulos.</p>
   </div>
 
-  <div class="section">
-    <label>
-      Margen de pausa (segundos): <input type="number" id="pauseMargin" step="0.1" value="0">
-    </label>
-    <div class="description">Cuántos segundos antes del fin pausar (o repetir si auto-repeat está activo).</div>
-  </div>
-
-  <div class="section">
-    <label>
-      Intervalo de chequeo (ms): <input type="number" id="checkIntervalMs" value="100">
-    </label>
-    <div class="description">Frecuencia durante el subtítulo (menor = más preciso, pero usa más CPU).</div>
-  </div>
-
-  <div class="section">
-    <label>
-      Intervalo de polling (ms): <input type="number" id="pollIntervalMs" value="200">
-    </label>
-    <div class="description">Frecuencia para detectar nuevos subtítulos (menor = más reactivo).</div>
-  </div>
-
-  <div class="section">
-    <label>
-      Compensación de tiempo (segundos): <input type="number" id="timeOffset" step="0.1" value="0">
-    </label>
-    <div class="description">Ajuste para desfases en subtítulos (negativo si pausa antes, positivo si después).</div>
+  <div class="pref-section">
+    <label>Compensación de tiempo (segundos):</label>
+    <input type="number" data-pref-key="timeOffset" data-type="float" min="-1.0" max="1.0" step="0.1" value="0" />
+    <p class="small secondary pref-help">Ajuste para desfases (negativo si pausa antes, positivo si después).</p>
   </div>
 </body>
 </html>
