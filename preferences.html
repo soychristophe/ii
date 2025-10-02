@@ -3,30 +3,6 @@
 <head>
   <meta charset="utf-8">
   <title>Configuración: Pausa Antes de Subtítulo</title>
-  <script>
-    // Script para asegurar que el checkbox se guarde correctamente
-    window.addEventListener('DOMContentLoaded', () => {
-      const checkbox = document.querySelector('input[data-pref-key="autoRepeatEnabled"]');
-      if (checkbox && window.iina && window.iina.preferences) {
-        // Cargar valor guardado
-        window.iina.preferences.get('autoRepeatEnabled', (value) => {
-          console.log('Cargando autoRepeatEnabled desde HTML:', value, typeof value);
-          if (value === true || value === 'true' || value === '1' || value === 1) {
-            checkbox.checked = true;
-          } else {
-            checkbox.checked = false;
-          }
-        });
-        
-        // Guardar al cambiar
-        checkbox.addEventListener('change', () => {
-          const newValue = checkbox.checked;
-          console.log('Guardando autoRepeatEnabled desde HTML:', newValue);
-          window.iina.preferences.set('autoRepeatEnabled', newValue);
-        });
-      }
-    });
-  </script>
 </head>
 <body>
   <div class="pref-section">
@@ -58,7 +34,7 @@
       <input type="checkbox" data-pref-key="autoRepeatEnabled" data-type="bool" />
       Activar Auto-Repetición
     </label>
-    <p class="small secondary pref-help">Repite automáticamente cada subtítulo el número de veces especificado. <strong>Usa la tecla R si esta opción no funciona desde aquí.</strong></p>
+    <p class="small secondary pref-help">Repite automáticamente cada subtítulo el número de veces especificado. Después de marcar esta opción, cierra y vuelve a abrir el video.</p>
   </div>
 
   <div class="pref-section">
