@@ -5,6 +5,7 @@ let checkInterval = null;
 let pollInterval = null;
 let currentSubEnd = 0;
 let lastSubText = "";
+let lastSubStart = -1; // Nuevo: para detectar realmente subtítulos nuevos
 let pluginEnabled = true;
 
 // Variables para auto-repetición
@@ -12,6 +13,7 @@ let autoRepeatEnabled = false;
 let autoRepeatTimes = 2;
 let currentRepeatCount = 0;
 let isAutoRepeating = false;
+let lastProcessedSubtitle = ""; // Para evitar procesar el mismo subtítulo múltiples veces
 
 // Defaults
 let pauseMargin = 0.0;
@@ -248,17 +250,38 @@ event.on("mpv.sub-start.changed", () => {
   const sid = mpv.getNumber("sid");
   
   if (sid > 0 && subText && subText.trim() !== "") {
-    currentSubEnd = mpv.getNumber("sub-end");
+    const subEnd = mpv.getNumber("sub-end");
+    
+    // Crear identificador único para este subtítulo
+    const subtitleId = `${subStart.toFixed(2)}-${subEnd.toFixed(2)}-${subText.substring(0, 20)}`;
+    
+    // Verificar si es realmente un subtítulo nuevo o es el mismo
+    const isSameSubtitle = (subtitleId === lastProcessedSubtitle);
+    
+    if (isSameSubtitle) {
+      console.log(`*** EVENTO DUPLICADO IGNORADO: ${subtitleId} ***`);
+      return; // Ignorar eventos duplicados del mismo subtítulo
+    }
+    
+    currentSubEnd = subEnd;
     lastSubText = subText;
     
-    // Si no estamos en modo auto-repetición, es un subtítulo nuevo - resetear contador
-    if (!isAutoRepeating) {
+    // Determinar si es una repetición o un subtítulo completamente nuevo
+    const isReallyNewSubtitle = !isAutoRepeating || Math.abs(subStart - lastSubStart) > 0.5;
+    
+    if (isReallyNewSubtitle) {
+      // Es un subtítulo completamente nuevo
       currentRepeatCount = 0;
-      console.log(`*** Nuevo subtítulo por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s (contador reset a 0) ***`);
-    } else {
-      // Es una repetición del mismo subtítulo - mantener contador
+      lastProcessedSubtitle = subtitleId;
+      lastSubStart = subStart;
+      console.log(`*** NUEVO SUBTÍTULO: inicio=${subStart.toFixed(2)}s, fin=${subEnd.toFixed(2)}s (contador RESET a 0) ***`);
       isAutoRepeating = false;
-      console.log(`*** Repetición detectada por EVENTO: inicio=${subStart.toFixed(2)}s, fin=${currentSubEnd.toFixed(2)}s (contador en ${currentRepeatCount}) ***`);
+    } else {
+      // Es una repetición del subtítulo anterior
+      lastProcessedSubtitle = subtitleId;
+      lastSubStart = subStart;
+      console.log(`*** REPETICIÓN: inicio=${subStart.toFixed(2)}s, fin=${subEnd.toFixed(2)}s (contador mantiene en ${currentRepeatCount}) ***`);
+      isAutoRepeating = false;
     }
     
     if (pluginEnabled) {
@@ -356,6 +379,8 @@ try {
 event.on("mpv.file-loaded", () => {
   currentSubEnd = 0;
   lastSubText = "";
+  lastSubStart = -1;
+  lastProcessedSubtitle = "";
   currentRepeatCount = 0;
   isAutoRepeating = false;
   if (checkInterval) clearInterval(checkInterval);
