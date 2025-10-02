@@ -78,31 +78,8 @@ function loadSettings(callback) {
 
 // Función para manejar la auto-repetición
 function handleAutoRepeat() {
-  if (!autoRepeatEnabled) return;
-
-  currentRepeatCount++;
-  
-  console.log(`Auto-repetición: ${currentRepeatCount}/${autoRepeatTimes}`);
-  
-  if (currentRepeatCount < autoRepeatTimes) {
-    // Repetir el subtítulo actual
-    isAutoRepeating = true;
-    setTimeout(() => {
-      mpv.command("sub-seek", ["0"]);
-      core.osd(`🔄 Repitiendo ${currentRepeatCount}/${autoRepeatTimes}`);
-      core.resume();
-    }, 300);
-  } else {
-    // Ya se repitió suficientes veces, avanzar al siguiente
-    console.log(`Auto-repetición completada. Avanzando al siguiente subtítulo.`);
-    currentRepeatCount = 0;
-    isAutoRepeating = true;
-    setTimeout(() => {
-      mpv.command("sub-seek", ["1"]);
-      core.osd(`➡️ Siguiente subtítulo (auto)`);
-      core.resume();
-    }, 300);
-  }
+  // Esta función ya no es necesaria porque la lógica se movió a setupPauseBeforeNextSub
+  console.log("handleAutoRepeat llamada - lógica movida a setupPauseBeforeNextSub");
 }
 
 // Función para configurar pausa cerca del final del subtítulo actual
@@ -130,19 +107,36 @@ function setupPauseBeforeNextSub() {
     }
 
     if (!isPaused && subVisibility && sid > 0 && nowTime >= (adjustedEnd - pauseMargin) && nowTime < adjustedEnd + 1) {
-      core.pause();
-      console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
+      clearInterval(checkInterval);
       
-      // Mostrar mensaje apropiado según auto-repetición
+      // Si auto-repetición está activada, NO pausar - repetir automáticamente
       if (autoRepeatEnabled) {
-        core.osd(`⏸️ Pausa: Play para continuar (${currentRepeatCount}/${autoRepeatTimes})`);
-        // Ejecutar auto-repetición después de pausar
-        handleAutoRepeat();
+        currentRepeatCount++;
+        console.log(`*** Fin de subtítulo alcanzado a ${nowTime.toFixed(2)}s - Auto-repetición ${currentRepeatCount}/${autoRepeatTimes} ***`);
+        
+        if (currentRepeatCount < autoRepeatTimes) {
+          // Aún quedan repeticiones - volver al inicio del subtítulo
+          core.osd(`🔄 Repitiendo ${currentRepeatCount + 1}/${autoRepeatTimes}`);
+          isAutoRepeating = true;
+          setTimeout(() => {
+            mpv.command("sub-seek", ["0"]);
+          }, 100);
+        } else {
+          // Ya se completaron todas las repeticiones - avanzar al siguiente
+          console.log(`*** Repeticiones completadas (${autoRepeatTimes}). Avanzando al siguiente subtítulo. ***`);
+          core.osd(`➡️ Siguiente subtítulo (auto) - ${autoRepeatTimes}x completado`);
+          currentRepeatCount = 0;
+          isAutoRepeating = true;
+          setTimeout(() => {
+            mpv.command("sub-seek", ["1"]);
+          }, 100);
+        }
       } else {
+        // Modo normal - pausar
+        core.pause();
+        console.log(`*** PAUSADO ANTES DEL SIGUIENTE a ${nowTime.toFixed(2)}s (fin: ${adjustedEnd.toFixed(2)}s) ***`);
         core.osd("⏸️ Pausa: Play para siguiente subtítulo");
       }
-      
-      clearInterval(checkInterval);
     }
   }, checkIntervalMs);
 }
@@ -157,13 +151,14 @@ function startPolling() {
         lastSubText = subText;
         currentSubEnd = mpv.getNumber("sub-end");
         
-        // Si no estamos en modo auto-repetición, resetear el contador
+        // Si no estamos en modo auto-repetición, es un subtítulo nuevo - resetear contador
         if (!isAutoRepeating) {
           currentRepeatCount = 0;
-          console.log(`*** Nuevo sub por POLLING: fin=${currentSubEnd.toFixed(2)}s (contador reset) ***`);
+          console.log(`*** Nuevo subtítulo por POLLING: fin=${currentSubEnd.toFixed(2)}s (contador reset a 0) ***`);
         } else {
+          // Es una repetición del mismo subtítulo - mantener contador
           isAutoRepeating = false;
-          console.log(`*** Nuevo sub por POLLING: fin=${currentSubEnd.toFixed(2)}s (después de repetición) ***`);
+          console.log(`*** Repetición detectada por POLLING: fin=${currentSubEnd.toFixed(2)}s (contador en ${currentRepeatCount}) ***`);
         }
         
         if (pluginEnabled) {
