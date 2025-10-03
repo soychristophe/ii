@@ -4,7 +4,6 @@ const { console, core, event, mpv, preferences, input, menu } = iina;
 let checkInterval = null;
 let pollInterval = null;
 let currentSubEnd = 0;
-let currentSubStart = 0;
 let lastSubText = "";
 let lastSubStart = -1; // Nuevo: para detectar realmente subtítulos nuevos
 let pluginEnabled = true;
@@ -130,10 +129,10 @@ function setupPauseBeforeNextSub() {
         
         if (currentRepeatCount < autoRepeatTimes) {
           // Aún quedan repeticiones - volver al inicio del subtítulo
-          core.osd(`🔄 Repitiendo ${currentRepeatCount}/${autoRepeatTimes}`);
+          core.osd(`🔄 Repitiendo ${currentRepeatCount + 1}/${autoRepeatTimes}`);
           isAutoRepeating = true;
           setTimeout(() => {
-            mpv.command("seek", [currentSubStart.toString(), "absolute"]);
+            mpv.command("sub-seek", ["0"]);
           }, 100);
         } else {
           // Ya se completaron todas las repeticiones - avanzar al siguiente
@@ -164,7 +163,6 @@ function startPolling() {
       if (subText && subText.trim() !== "" && subText !== lastSubText) {
         lastSubText = subText;
         currentSubEnd = mpv.getNumber("sub-end");
-        currentSubStart = mpv.getNumber("sub-start");
         
         // Si no estamos en modo auto-repetición, es un subtítulo nuevo - resetear contador
         if (!isAutoRepeating) {
@@ -201,8 +199,7 @@ function handleSubtitleNavigation(command) {
       core.resume();
       break;
     case "repeat":
-      const subStartNow = mpv.getNumber("sub-start");
-      mpv.command("seek", [subStartNow.toString(), "absolute"]);
+      mpv.command("sub-seek", ["0"]);
       console.log("*** Repetir: Seek a inicio subtítulo actual ***");
       core.osd("🔄 Repitiendo subtítulo actual");
       core.resume();
@@ -255,9 +252,6 @@ event.on("mpv.sub-start.changed", () => {
   if (sid > 0 && subText && subText.trim() !== "") {
     const subEnd = mpv.getNumber("sub-end");
     
-    currentSubStart = subStart;
-    currentSubEnd = subEnd;
-    
     // Crear identificador único para este subtítulo
     const subtitleId = `${subStart.toFixed(2)}-${subEnd.toFixed(2)}-${subText.substring(0, 20)}`;
     
@@ -269,6 +263,7 @@ event.on("mpv.sub-start.changed", () => {
       return; // Ignorar eventos duplicados del mismo subtítulo
     }
     
+    currentSubEnd = subEnd;
     lastSubText = subText;
     
     // Determinar si es una repetición o un subtítulo completamente nuevo
@@ -383,7 +378,6 @@ try {
 // Al cargar archivo
 event.on("mpv.file-loaded", () => {
   currentSubEnd = 0;
-  currentSubStart = 0;
   lastSubText = "";
   lastSubStart = -1;
   lastProcessedSubtitle = "";
