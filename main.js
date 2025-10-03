@@ -35,24 +35,26 @@ function setupPauseBeforeNextSub() {
     if (!isPaused && subVisibility && sid > 0 && nowTime >= currentSubEnd && nowTime < currentSubEnd + 1) {
       clearInterval(checkInterval);
       
+      mpv.setFlag("pause", true);  // Pausar inmediatamente para evitar avance
+      
       currentRepeatCount++;
       console.log(`*** Fin de subtítulo - Repetición ${currentRepeatCount}/${REPEAT_TIMES} ***`);
       
       if (currentRepeatCount < REPEAT_TIMES) {
-        // Repetir: hacer seek al inicio
         core.osd(`🔄 Repitiendo ${currentRepeatCount + 1}/${REPEAT_TIMES}`);
         isAutoRepeating = true;
         setTimeout(() => {
           mpv.command("seek", [currentSubStart.toString(), "absolute"]);
+          mpv.setFlag("pause", false);  // Reanudar después del seek
         }, 100);
       } else {
-        // Completado: avanzar al siguiente
         console.log(`*** ${REPEAT_TIMES} repeticiones completadas. Siguiente subtítulo. ***`);
         core.osd(`➡️ Siguiente subtítulo`);
         currentRepeatCount = 0;
         isAutoRepeating = true;
         setTimeout(() => {
           mpv.command("sub-seek", ["1"]);
+          mpv.setFlag("pause", false);  // Reanudar después del sub-seek
         }, 100);
       }
     }
@@ -68,8 +70,8 @@ event.on("mpv.sub-start.changed", () => {
   if (sid > 0 && subText && subText.trim() !== "") {
     const subEnd = mpv.getNumber("sub-end");
     
-    // Crear ID único
-    const subtitleId = `${subStart.toFixed(2)}-${subEnd.toFixed(2)}-${subText.substring(0, 20)}`;
+    // Crear ID único (aumentar precisión a toFixed(3) por si hay issues de float)
+    const subtitleId = `${subStart.toFixed(3)}-${subEnd.toFixed(3)}-${subText.substring(0, 20)}`;
     
     // Ignorar duplicados
     if (subtitleId === lastProcessedSubtitle) {
