@@ -11,15 +11,15 @@ let pluginEnabled = true;
 
 // Variables para auto-repetición
 let autoRepeatEnabled = false;
-let autoRepeatTimes = 2;
+let autoRepeatTimes = 3;
 let currentRepeatCount = 0;
 let isAutoRepeating = false;
 let lastProcessedSubtitle = "";
 
 // Defaults
 let pauseMargin = 0.0;
-let checkIntervalMs = 100;
-let pollIntervalMs = 200;
+let checkIntervalMs = 50;
+let pollIntervalMs = 100;
 let timeOffset = 0;
 
 // Cargar settings ASÍNCRONAMENTE con callbacks
